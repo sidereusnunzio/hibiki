@@ -1,0 +1,24 @@
+# Secrets / machine-local
+.env
+.env.*
+local.properties
+*.keystore
+credentials.json
+
+# Android / Gradle
+*.iml
+.gradle/
+.idea/
+.kotlin/
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_
+*.aab
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,67 @@
+---
+description: Bump app version on every git commit (must be in the SAME commit)
+alwaysApply: true
+---
+
+# Version bump on every commit
+
+Whenever the user asks to create a git commit **or push**, **always bump the app version first**, then include the version file in **the same commit** as the rest of the work. Do this even for docs, refactors, or chores—no need for the user to ask.
+
+Until `app/build.gradle.kts` exists, the version file is `app/version.properties`. When Gradle is scaffolded, keep the three fields in sync there (or migrate them into `defaultConfig`).
+
+## Critical: never split bump from the feature commit
+
+This failure mode is **forbidden** and has happened before—do not repeat it:
+
+1. Committing feature work while mentioning `(vX.Y.ZZ)` in the message
+2. Discovering `versionCode` / `versionName` / `APP_UPDATE_ID` were **not** updated
+3. Pushing anyway, then fixing with a separate “Bump app version…” commit
+
+**Required behavior instead:**
+
+- Bump **before** `git add` / `git commit`
+- Run the bump **sequentially**, never in parallel with staging/committing (parallel tool calls race and drop the bump)
+- After staging, verify the version file is in the staged set (`git status` / `git diff --cached`)
+- Only then commit; only then push
+- Do **not** push a commit whose message claims a new version if the version file still has the old values
+
+A follow-up version-only commit is an error recovery last resort, not the normal workflow.
+
+## Where to update
+
+Edit `app/version.properties` (and `app/build.gradle.kts` `defaultConfig` once it exists):
+
+1. `versionCode` — increment by 1 (integer, Play Store requires strictly increasing)
+2. `versionName` — bump the patch segment (see scheme below)
+3. `APP_UPDATE_ID` buildConfigField — must stay identical to `versionName`
+
+## versionName scheme
+
+Format: `MAJOR.MINOR.PATCH` where `PATCH` is zero-padded to 2 digits (e.g. `1.1.03`).
+
+- Default on every commit: increment **PATCH** (`1.1.03` → `1.1.04` → … → `1.1.09` → `1.1.10`)
+- Only bump **MINOR** or **MAJOR** if the user explicitly asks
+
+## Commit / push workflow order (strict sequence)
+
+1. Read current `versionCode` / `versionName` / `APP_UPDATE_ID` from the version file
+2. Apply the bump (all three fields) and **wait until the edit succeeds**
+3. Re-read the version file to confirm the new values are on disk
+4. `git add` the version file **together with** all other commit contents
+5. Confirm staged files include the version file
+6. Commit (prefer mentioning the new version, e.g. `… (v1.1.04)`)
+7. Only after a successful commit that contains the bump: push if requested
+
+## Example
+
+```kotlin
+// before
+versionCode = 4
+versionName = "1.1.03"
+buildConfigField("String", "APP_UPDATE_ID", "\"1.1.03\"")
+
+// after (next commit)
+versionCode = 5
+versionName = "1.1.04"
+buildConfigField("String", "APP_UPDATE_ID", "\"1.1.04\"")
+```

@@ -1,0 +1,25 @@
+---
+description: General development guidelines for the Hibiki project
+alwaysApply: true
+---
+
+# General Development Guidelines
+
+## UI formatting and graphic consistency
+
+- Use only the shared color tokens defined in `app/src/main/java/com/hibiki/ui/theme/Color.kt` (`Cyberpunk.*`); do not define or introduce page-local colors in screens or components. For alpha variants use `Cyberpunk.withAlpha`.
+- Maximize reuse of existing UI building blocks before creating new ones.
+- Prefer generalized, reusable components over one-off page-specific implementations whenever the pattern can be shared.
+- Avoid making each page visually independent: shared components and shared styling should be the default to preserve constant graphic consistency across the app.
+
+## Commit and push
+
+- When the user asks to push: **first** bump the app version per `.cursor/rules/version-bump-on-commit.mdc` (same commit as the work—never a follow-up bump after push), commit **all** local work (every modified and untracked file that belongs in the repo — not only the latest chat topic), then push **everything** that is ahead of remote. Do the bump → verify → stage → commit steps **sequentially** (not in parallel tool calls). Do not leave unrelated WIP uncommitted or unpushed. Exclude only secrets and files that must not be tracked (e.g. `.env`, `local.properties`, credentials).
+
+## Other
+
+- Prefer small, localized changes that fit the existing architecture before introducing new abstractions.
+- Avoid hardcoding secrets, API keys, or machine-specific paths in tracked files.
+- Prefer clear naming and simple control flow over clever or highly compressed code.
+- Add focused tests only when they materially reduce regression risk; avoid noisy tests with little value.
+- Update project documentation when a structural or workflow convention changes.
