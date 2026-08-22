@@ -1,0 +1,14 @@
+---
+description: Lingua dei prompt interni (italiano, giapponese solo per contenuto linguistico)
+alwaysApply: true
+---
+
+# Prompt interni
+
+Tutti i prompt interni dell'app si scrivono in italiano, inclusi contesto generale, contesto del personaggio, istruzioni fisse di trascrizione e analisi linguistica.
+
+Restano in giapponese: nomi giapponesi, termini ed espressioni, esempi linguistici, testo da trascrivere o analizzare.
+
+La lingua dell'audio continua a viaggiare a parte (`language="ja"`), non dentro il testo del prompt.
+
+Non tradurre i prompt in inglese salvo evidenze misurabili che migliorino il risultato.

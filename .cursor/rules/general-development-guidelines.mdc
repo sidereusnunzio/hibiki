@@ -23,3 +23,4 @@ alwaysApply: true
 - Prefer clear naming and simple control flow over clever or highly compressed code.
 - Add focused tests only when they materially reduce regression risk; avoid noisy tests with little value.
 - Update project documentation when a structural or workflow convention changes.
+- Internal model prompts (context, character, transcription rules, linguistic analysis) follow `.cursor/rules/prompt-language.mdc`: Italian by default; Japanese only for names, terms, examples, and the text being transcribed or analyzed.

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash di sistema: solo colore, senza icona stile home -->
+    <style name="Theme.Hibiki.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_transparent</item>
+        <item name="postSplashScreenTheme">@style/Theme.Hibiki</item>
+    </style>
+
+    <style name="Theme.Hibiki" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

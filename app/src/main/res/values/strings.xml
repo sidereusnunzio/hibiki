@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hibiki</string>
+    <string name="connecting_ja">接続中…</string>
+    <string name="overlay_notification_channel">Overlay</string>
+    <string name="overlay_notification_title">Overlay attivo</string>
+    <string name="overlay_notification_text">Tocca per tornare all\'app</string>
+    <string name="overlay_notification_stop">Spegni overlay</string>
+</resources>
