@@ -1,6 +1,7 @@
 package com.hibiki
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
@@ -15,21 +16,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.hibiki.overlay.OverlayService
 import com.hibiki.ui.boot.ConnectingScreen
 import com.hibiki.ui.navigation.HibikiNavHost
-import com.hibiki.ui.theme.Cyberpunk
 import com.hibiki.ui.theme.HibikiTheme
 
 class MainActivity : ComponentActivity() {
@@ -61,7 +56,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         refreshPermissions()
         setContent {
-            var connected by rememberSaveable { mutableStateOf(false) }
+            val skipBoot = intent.getBooleanExtra(EXTRA_SKIP_BOOT, false)
+            var connected by rememberSaveable { mutableStateOf(skipBoot) }
             HibikiTheme {
                 Crossfade(
                     targetState = connected,
@@ -71,16 +67,9 @@ class MainActivity : ComponentActivity() {
                     if (!isConnected) {
                         ConnectingScreen(onFinished = { connected = true })
                     } else {
-                        Scaffold(
-                            containerColor = Cyberpunk.Void,
-                            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                HibikiNavHost(
-                                    onStartOverlay = ::onStartOverlay,
-                                )
-                            }
-                        }
+                        HibikiNavHost(
+                            onStartOverlay = ::onStartOverlay,
+                        )
                     }
                 }
             }
@@ -138,5 +127,18 @@ class MainActivity : ComponentActivity() {
             manager.createScreenCaptureIntent()
         }
         projectionLauncher.launch(intent)
+    }
+
+    companion object {
+        const val EXTRA_SKIP_BOOT = "skip_boot"
+
+        fun openHome(context: Context) {
+            context.startActivity(
+                Intent(context, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    putExtra(EXTRA_SKIP_BOOT, true)
+                },
+            )
+        }
     }
 }

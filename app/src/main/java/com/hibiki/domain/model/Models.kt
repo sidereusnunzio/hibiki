@@ -8,6 +8,7 @@ data class StudyContext(
     val hasSubjects: Boolean,
     val isBuiltIn: Boolean,
     val sortOrder: Int,
+    val imagePath: String? = null,
 )
 
 data class Subject(
@@ -16,6 +17,7 @@ data class Subject(
     val displayName: String,
     val japaneseName: String,
     val prompt: String = "",
+    val imagePath: String? = null,
 )
 
 enum class PhraseSource {
@@ -53,6 +55,7 @@ data class Phrase(
     val verified: Boolean,
     val source: PhraseSource,
     val createdAt: Long,
+    val updatedAt: Long,
     val transcriptionModel: String,
     val analysisModel: String,
     val transcriptionPromptVersion: Int,
@@ -72,13 +75,18 @@ data class LinguisticAnalysis(
 data class PhraseListItem(
     val phrase: Phrase,
     val contextName: String,
+    val contextImagePath: String?,
     val subjectDisplayName: String?,
     val subjectJapaneseName: String?,
-)
+    val subjectImagePath: String?,
+) {
+    val listThumbPath: String?
+        get() = subjectImagePath ?: contextImagePath
+}
 
 data class ArchiveFilters(
     val query: String = "",
-    val contextId: String? = null,
+    val contextId: String? = BuiltInIds.GENERAL,
     val subjectId: String? = null,
     val verifiedOnly: Boolean = false,
     val newestFirst: Boolean = true,

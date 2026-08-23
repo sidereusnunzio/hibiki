@@ -18,6 +18,7 @@ fun ContextEntity.toModel() = StudyContext(
     hasSubjects = hasSubjects,
     isBuiltIn = isBuiltIn,
     sortOrder = sortOrder,
+    imagePath = imagePath,
 )
 
 fun StudyContext.toEntity() = ContextEntity(
@@ -28,6 +29,7 @@ fun StudyContext.toEntity() = ContextEntity(
     hasSubjects = hasSubjects,
     isBuiltIn = isBuiltIn,
     sortOrder = sortOrder,
+    imagePath = imagePath,
 )
 
 fun SubjectEntity.toModel() = Subject(
@@ -36,6 +38,7 @@ fun SubjectEntity.toModel() = Subject(
     displayName = displayName,
     japaneseName = japaneseName,
     prompt = prompt,
+    imagePath = imagePath,
 )
 
 fun Subject.toEntity() = SubjectEntity(
@@ -44,6 +47,7 @@ fun Subject.toEntity() = SubjectEntity(
     displayName = displayName,
     japaneseName = japaneseName,
     prompt = prompt,
+    imagePath = imagePath,
 )
 
 fun AudioSampleEntity.toModel() = AudioSample(
@@ -88,6 +92,7 @@ fun PhraseEntity.toModel(sample: AudioSampleEntity) = Phrase(
     verified = verified,
     source = runCatching { PhraseSource.valueOf(source) }.getOrDefault(PhraseSource.API),
     createdAt = createdAt,
+    updatedAt = updatedAt,
     transcriptionModel = sample.transcriptionModel,
     analysisModel = analysisModel,
     transcriptionPromptVersion = sample.transcriptionPromptVersion,
@@ -107,6 +112,7 @@ fun Phrase.toEntity() = PhraseEntity(
     verified = verified,
     source = source.name,
     createdAt = createdAt,
+    updatedAt = updatedAt,
     analysisModel = analysisModel,
     analysisPromptVersion = analysisPromptVersion,
 )

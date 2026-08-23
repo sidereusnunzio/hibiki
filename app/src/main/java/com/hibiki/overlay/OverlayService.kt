@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.app.NotificationCompat
@@ -162,6 +163,12 @@ class OverlayService : Service() {
                 val appPrefs by settings.preferences.collectAsState(
                     initial = com.hibiki.domain.model.AppPreferences(),
                 )
+                LaunchedEffect(uiState.collapsed) {
+                    overlayWindow?.setWidthDp(
+                        if (uiState.collapsed) OverlayWindow.COLLAPSED_WIDTH_DP
+                        else OverlayWindow.EXPANDED_WIDTH_DP,
+                    )
+                }
                 OverlayPanel(
                     state = uiState,
                     displayPrefs = appPrefs.overlayDisplay,
@@ -180,10 +187,18 @@ class OverlayService : Service() {
                             else -> Unit
                         }
                     },
+                    onBufferToggle = {
+                        controller.setBufferEnabled(!uiState.bufferEnabled, scope)
+                    },
                     onPlay = {
                         uiState.result?.phrase?.audioPath?.let { app.container.phraseAudioPlayer.play(it) }
                     },
-                    onClose = {
+                    onCloseOverlay = {
+                        controller.stopListen()
+                        MainActivity.openHome(this@OverlayService)
+                        stopSelf()
+                    },
+                    onCloseApp = {
                         controller.stopListen()
                         stopSelf()
                     },

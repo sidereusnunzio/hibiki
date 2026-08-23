@@ -1,6 +1,7 @@
 package com.hibiki.ui.contexts
 
 import android.app.Application
+import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -19,6 +20,7 @@ data class SubjectDraft(
     val displayName: String = "",
     val japaneseName: String = "",
     val prompt: String = "",
+    val image: ImageEdit = ImageEdit(),
 )
 
 data class ContextEditState(
@@ -28,6 +30,7 @@ data class ContextEditState(
     val expectedLanguage: String = "ja",
     val hasSubjects: Boolean = false,
     val isBuiltIn: Boolean = false,
+    val image: ImageEdit = ImageEdit(),
     val subjects: List<SubjectDraft> = emptyList(),
     val error: String? = null,
 )
@@ -41,6 +44,7 @@ class ContextEditViewModel(
     private val _state = MutableStateFlow(ContextEditState(id = contextId))
     val state: StateFlow<ContextEditState> = _state.asStateFlow()
     private var persistedSubjectIds: Set<String> = emptySet()
+    private var saved = false
 
     init {
         viewModelScope.launch {
@@ -51,10 +55,28 @@ class ContextEditViewModel(
         }
     }
 
+    override fun onCleared() {
+        if (!saved) {
+            _state.value.image.discardPending()
+            _state.value.subjects.forEach { it.image.discardPending() }
+        }
+        super.onCleared()
+    }
+
     fun setName(value: String) = _state.updateCopy { copy(name = value) }
     fun setPrompt(value: String) = _state.updateCopy { copy(prompt = value) }
     fun setLanguage(value: String) = _state.updateCopy { copy(expectedLanguage = value) }
     fun setHasSubjects(value: Boolean) = _state.updateCopy { copy(hasSubjects = value) }
+
+    fun setContextImage(bitmap: Bitmap) {
+        val store = container.imageFileStore
+        _state.updateCopy { copy(image = image.applyCropped(bitmap, store)) }
+    }
+
+    fun setSubjectImage(id: String, bitmap: Bitmap) {
+        val store = container.imageFileStore
+        updateSubject(id) { copy(image = image.applyCropped(bitmap, store)) }
+    }
 
     fun addSubject() {
         _state.updateCopy {
@@ -66,6 +88,8 @@ class ContextEditViewModel(
     }
 
     fun removeSubject(id: String) {
+        val removed = _state.value.subjects.find { it.id == id }
+        removed?.image?.discardPending()
         _state.updateCopy { copy(subjects = subjects.filterNot { it.id == id }) }
     }
 
@@ -93,12 +117,13 @@ class ContextEditViewModel(
                 return@launch
             }
             try {
-                val saved = if (current.id == null) {
+                val persistedContext = if (current.id == null) {
                     container.contextRepository.createContext(
                         name = current.name,
                         prompt = current.prompt,
                         expectedLanguage = current.expectedLanguage,
                         hasSubjects = current.hasSubjects || drafts.isNotEmpty(),
+                        imagePath = current.image.persist(container.imageFileStore),
                     )
                 } else {
                     val existing = container.contextRepository.getContext(current.id) ?: return@launch
@@ -107,11 +132,13 @@ class ContextEditViewModel(
                         prompt = current.prompt.trim(),
                         expectedLanguage = current.expectedLanguage.trim().ifBlank { "ja" },
                         hasSubjects = current.hasSubjects || drafts.isNotEmpty(),
+                        imagePath = current.image.persist(container.imageFileStore),
                     )
                     container.contextRepository.updateContext(updated)
                     updated
                 }
-                persistSubjects(saved.id, drafts)
+                persistSubjects(persistedContext.id, drafts)
+                saved = true
                 onDone()
             } catch (error: Throwable) {
                 _state.value = current.copy(error = error.message)
@@ -132,6 +159,7 @@ class ContextEditViewModel(
                     displayName = draft.displayName.trim(),
                     japaneseName = draft.japaneseName.trim(),
                     prompt = draft.prompt.trim(),
+                    imagePath = draft.image.persist(container.imageFileStore),
                 ),
             )
         }
@@ -147,12 +175,14 @@ class ContextEditViewModel(
             expectedLanguage = context.expectedLanguage,
             hasSubjects = context.hasSubjects,
             isBuiltIn = context.isBuiltIn,
+            image = ImageEdit(previewPath = context.imagePath, originalPath = context.imagePath),
             subjects = subjects.map { subject ->
                 SubjectDraft(
                     id = subject.id,
                     displayName = subject.displayName,
                     japaneseName = subject.japaneseName,
                     prompt = subject.prompt,
+                    image = ImageEdit(previewPath = subject.imagePath, originalPath = subject.imagePath),
                 )
             },
         )

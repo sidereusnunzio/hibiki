@@ -1,23 +1,43 @@
 package com.hibiki.ui.settings
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hibiki.container
+import com.hibiki.data.arashi.ArashiExportContract
+import com.hibiki.data.arashi.ArashiExportException
+import com.hibiki.data.arashi.ArashiExportIntents
+import com.hibiki.data.arashi.ArashiExportOutcome
+import com.hibiki.data.arashi.ArashiExportPackage
+import com.hibiki.data.arashi.ArashiExportResultInterpreter
+import com.hibiki.data.arashi.model.ArashiExportType
+import com.hibiki.data.arashi.model.ArashiImportResultDto
 import com.hibiki.data.api.openai.OpenAiCostsClient
 import com.hibiki.data.api.openai.OpenAiCostsReport
+import com.hibiki.data.backup.BackupExportState
+import com.hibiki.data.backup.BackupImportState
 import com.hibiki.domain.model.ApiProviderId
 import com.hibiki.domain.model.ApiSettings
 import com.hibiki.domain.model.AppPreferences
+import com.hibiki.domain.model.AudioBufferConfig
 import com.hibiki.domain.model.AudioSettings
+import com.hibiki.domain.model.LastArashiExport
 import com.hibiki.domain.model.OverlayDisplayPrefs
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 
 data class SettingsUiState(
     val apiKey: String = "",
@@ -34,7 +54,26 @@ data class SettingsUiState(
     val costsState: CostsState = CostsState.Idle,
     val audio: AudioSettings = AudioSettings(),
     val overlayDisplay: OverlayDisplayPrefs = OverlayDisplayPrefs(),
+    val backupState: BackupState = BackupState.Idle,
+    val lastArashiExport: LastArashiExport? = null,
+    val arashiExportState: ArashiExportState = ArashiExportState.Idle,
 )
+
+sealed interface ArashiExportState {
+    data object Idle : ArashiExportState
+    data object Preparing : ArashiExportState
+    data class Success(val summary: String) : ArashiExportState
+    data class Error(val message: String) : ArashiExportState
+}
+
+sealed interface BackupState {
+    data object Idle : BackupState
+    data class Exporting(val message: String) : BackupState
+    data object ExportReady : BackupState
+    data class Importing(val message: String) : BackupState
+    data class Success(val message: String) : BackupState
+    data class Error(val message: String) : BackupState
+}
 
 sealed interface PersistState {
     data object Idle : PersistState
@@ -62,11 +101,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     private var persistJob: Job? = null
+    private var pendingExportFile: File? = null
+    private var pendingArashiPackage: ArashiExportPackage? = null
+    private val _arashiLaunch = MutableSharedFlow<android.content.Intent>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val arashiLaunch: SharedFlow<android.content.Intent> = _arashiLaunch.asSharedFlow()
 
     init {
         viewModelScope.launch {
             container.settingsRepository.preferences.collect { prefs ->
                 _uiState.update { current -> current.fromPrefs(prefs) }
+            }
+        }
+        viewModelScope.launch {
+            container.settingsRepository.lastArashiExport.collect { last ->
+                _uiState.update { it.copy(lastArashiExport = last) }
             }
         }
     }
@@ -111,6 +162,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setMaxDuration(seconds: Int) {
         persistAudio { it.copy(maxDurationSeconds = seconds.coerceIn(2, 30)) }
+    }
+
+    fun setBufferDuration(seconds: Int) {
+        persistAudio {
+            it.copy(
+                bufferDurationSeconds = seconds.coerceIn(
+                    AudioBufferConfig.MIN_SECONDS,
+                    AudioBufferConfig.MAX_SECONDS,
+                ),
+            )
+        }
     }
 
     fun setSaveAudio(value: Boolean) = persistAudio { it.copy(saveAudio = value) }
@@ -219,6 +281,304 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { container.settingsRepository.setOverlayDisplay(next) }
     }
 
+    fun startExport(context: Context) {
+        viewModelScope.launch {
+            val tempFile = File(context.cacheDir, "hibiki_export_${System.currentTimeMillis()}.zip")
+            pendingExportFile?.delete()
+            pendingExportFile = null
+            _uiState.update { it.copy(backupState = BackupState.Exporting("")) }
+            try {
+                container.backupRepository.exportBackup(tempFile).collect { state ->
+                    _uiState.update {
+                        it.copy(backupState = BackupState.Exporting(backupExportLabel(state)))
+                    }
+                    when (state) {
+                        is BackupExportState.Completed -> {
+                            pendingExportFile = tempFile
+                            _uiState.update { it.copy(backupState = BackupState.ExportReady) }
+                        }
+                        is BackupExportState.Failed -> {
+                            tempFile.delete()
+                            pendingExportFile = null
+                            _uiState.update {
+                                it.copy(
+                                    backupState = BackupState.Error(
+                                        state.error.message ?: "Export fallito",
+                                    ),
+                                )
+                            }
+                        }
+                        else -> Unit
+                    }
+                }
+            } catch (error: Exception) {
+                tempFile.delete()
+                pendingExportFile = null
+                _uiState.update {
+                    it.copy(backupState = BackupState.Error(error.message ?: "Export fallito"))
+                }
+            }
+        }
+    }
+
+    fun saveExportToUri(context: Context, uri: Uri) {
+        val tempFile = pendingExportFile
+        if (tempFile == null || !tempFile.exists()) {
+            _uiState.update {
+                it.copy(backupState = BackupState.Error("Nessun export pronto da salvare"))
+            }
+            return
+        }
+        viewModelScope.launch {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    tempFile.inputStream().use { input -> input.copyTo(output) }
+                } ?: error("Impossibile scrivere il file di destinazione")
+                tempFile.delete()
+                pendingExportFile = null
+                _uiState.update {
+                    it.copy(backupState = BackupState.Success("Export completato"))
+                }
+            } catch (error: Exception) {
+                runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
+                tempFile.delete()
+                pendingExportFile = null
+                _uiState.update {
+                    it.copy(backupState = BackupState.Error(error.message ?: "Export fallito"))
+                }
+            }
+        }
+    }
+
+    fun cancelPendingExport() {
+        pendingExportFile?.delete()
+        pendingExportFile = null
+        _uiState.update { it.copy(backupState = BackupState.Idle) }
+    }
+
+    fun importBackupFromUri(context: Context, uri: Uri) {
+        val tempFile = File(context.cacheDir, "hibiki_import_${System.currentTimeMillis()}.zip")
+        viewModelScope.launch {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: error("Impossibile leggere il file selezionato")
+                importBackup(tempFile)
+            } catch (error: Exception) {
+                tempFile.delete()
+                _uiState.update {
+                    it.copy(backupState = BackupState.Error(error.message ?: "Import fallito"))
+                }
+            }
+        }
+    }
+
+    fun importBackup(archiveFile: File) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(backupState = BackupState.Importing("")) }
+            try {
+                container.backupRepository.importBackup(archiveFile).collect { state ->
+                    _uiState.update {
+                        it.copy(backupState = BackupState.Importing(backupImportLabel(state)))
+                    }
+                    when (state) {
+                        is BackupImportState.Completed -> {
+                            archiveFile.delete()
+                            _uiState.update {
+                                it.copy(backupState = BackupState.Success("Backup importato"))
+                            }
+                        }
+                        is BackupImportState.Failed -> {
+                            archiveFile.delete()
+                            _uiState.update {
+                                it.copy(
+                                    backupState = BackupState.Error(
+                                        state.error.message ?: "Import fallito",
+                                    ),
+                                )
+                            }
+                        }
+                        else -> Unit
+                    }
+                }
+            } catch (error: Exception) {
+                archiveFile.delete()
+                _uiState.update {
+                    it.copy(backupState = BackupState.Error(error.message ?: "Import fallito"))
+                }
+            }
+        }
+    }
+
+    fun clearBackupState() {
+        _uiState.update { it.copy(backupState = BackupState.Idle) }
+    }
+
+    fun startArashiExport(context: Context, requestedType: ArashiExportType) {
+        viewModelScope.launch {
+            clearPendingArashiPackage(context)
+            _uiState.update { it.copy(arashiExportState = ArashiExportState.Preparing) }
+            val outputDir = File(context.cacheDir, "arashi_export")
+            outputDir.mkdirs()
+            val outputFile = File(outputDir, "hibiki-arashi-export.zip")
+            try {
+                if (!ArashiExportIntents.isArashiImportAvailable(context)) {
+                    _uiState.update {
+                        it.copy(
+                            arashiExportState = ArashiExportState.Error(
+                                "Arashi non è installata o l'import non è disponibile",
+                            ),
+                        )
+                    }
+                    return@launch
+                }
+                val lastAt = _uiState.value.lastArashiExport?.exportedAtEpochMs
+                val created = container.arashiExportService.createPackage(
+                    outputFile = outputFile,
+                    requestedType = requestedType,
+                    lastSuccessfulExportAtMs = lastAt,
+                )
+                val uri = ArashiExportIntents.fileProviderUri(context, created.file)
+                context.grantUriPermission(
+                    ArashiExportContract.ARASHI_PACKAGE,
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+                pendingArashiPackage = created
+                val launched = _arashiLaunch.tryEmit(ArashiExportIntents.importIntent(uri, created.exportId))
+                if (!launched) {
+                    clearPendingArashiPackage(context)
+                    _uiState.update {
+                        it.copy(arashiExportState = ArashiExportState.Error("Impossibile aprire Arashi"))
+                    }
+                }
+            } catch (error: ArashiExportException) {
+                outputFile.delete()
+                _uiState.update {
+                    it.copy(arashiExportState = ArashiExportState.Error(error.message ?: "Export fallito"))
+                }
+            } catch (error: Exception) {
+                outputFile.delete()
+                _uiState.update {
+                    it.copy(
+                        arashiExportState = ArashiExportState.Error(
+                            error.message ?: "Export verso Arashi fallito",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun onArashiLaunchFailed(context: Context, error: Throwable) {
+        clearPendingArashiPackage(context)
+        _uiState.update {
+            it.copy(
+                arashiExportState = ArashiExportState.Error(
+                    error.message ?: "Arashi non è installata o l'import non è disponibile",
+                ),
+            )
+        }
+    }
+
+    fun onArashiActivityResult(
+        context: Context,
+        resultCode: Int,
+        resultJson: String?,
+        errorMessage: String?,
+    ) {
+        val pending = pendingArashiPackage
+        val expectedId = pending?.exportId.orEmpty()
+        val outcome = ArashiExportResultInterpreter.interpret(
+            resultCode = resultCode,
+            resultJson = resultJson,
+            errorMessage = errorMessage,
+            expectedExportId = expectedId,
+        )
+        clearPendingArashiPackage(context)
+        when (outcome) {
+            ArashiExportOutcome.Cancelled -> {
+                _uiState.update { it.copy(arashiExportState = ArashiExportState.Idle) }
+            }
+            is ArashiExportOutcome.Invalid -> {
+                _uiState.update { it.copy(arashiExportState = ArashiExportState.Error(outcome.message)) }
+            }
+            is ArashiExportOutcome.Success -> {
+                viewModelScope.launch {
+                    if (pending != null) {
+                        container.settingsRepository.setLastArashiExport(
+                            LastArashiExport(
+                                exportedAtEpochMs = pending.exportedAtEpochMs,
+                                exportId = pending.exportId,
+                                phraseCount = pending.phraseCount,
+                                exportType = pending.exportType,
+                            ),
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(arashiExportState = ArashiExportState.Success(formatArashiSummary(outcome.result)))
+                    }
+                }
+            }
+        }
+    }
+
+    fun clearArashiExportState() {
+        _uiState.update { it.copy(arashiExportState = ArashiExportState.Idle) }
+    }
+
+    private fun clearPendingArashiPackage(context: Context) {
+        pendingArashiPackage?.let { pending ->
+            runCatching {
+                val uri = ArashiExportIntents.fileProviderUri(context, pending.file)
+                context.revokeUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            pending.file.delete()
+        }
+        pendingArashiPackage = null
+    }
+
+    private fun formatArashiSummary(result: ArashiImportResultDto): String {
+        return buildString {
+            append("Export verso Arashi completato")
+            append('\n')
+            append("${result.imported} nuove frasi importate")
+            append('\n')
+            append("${result.updated} frasi aggiornate")
+            append('\n')
+            append("${result.duplicates} già presenti")
+            append('\n')
+            append("${result.failed} ${if (result.failed == 1) "errore" else "errori"}")
+        }
+    }
+
+    private fun backupExportLabel(state: BackupExportState): String = when (state) {
+        BackupExportState.Preparing -> "Preparazione…"
+        BackupExportState.CopyingDatabase -> "Copia database…"
+        is BackupExportState.CopyingMedia -> "Media ${state.current}/${state.total}"
+        BackupExportState.WritingManifest -> "Manifest…"
+        BackupExportState.Compressing -> "Compressione…"
+        BackupExportState.Validating -> "Validazione…"
+        is BackupExportState.Completed -> "Completato"
+        is BackupExportState.Failed -> "Errore"
+    }
+
+    private fun backupImportLabel(state: BackupImportState): String = when (state) {
+        BackupImportState.Preparing -> "Preparazione…"
+        BackupImportState.Extracting -> "Estrazione…"
+        BackupImportState.ReadingManifest -> "Lettura manifest…"
+        BackupImportState.ValidatingChecksums -> "Checksum…"
+        BackupImportState.ValidatingDatabase -> "Validazione DB…"
+        BackupImportState.BackingUpCurrentData -> "Backup sicurezza…"
+        BackupImportState.ReplacingDatabase -> "Sostituzione DB…"
+        BackupImportState.ReplacingMedia -> "Sostituzione media…"
+        BackupImportState.ReopeningDatabase -> "Riapertura DB…"
+        BackupImportState.FinalValidation -> "Validazione finale…"
+        BackupImportState.Completed -> "Completato"
+        BackupImportState.RollingBack -> "Rollback…"
+        is BackupImportState.Failed -> "Errore"
+    }
+
     private fun SettingsUiState.fromPrefs(prefs: AppPreferences): SettingsUiState {
         val storedKey = container.settingsRepository.getApiKey().orEmpty()
         val storedAdmin = container.settingsRepository.getAdminApiKey().orEmpty()
@@ -233,6 +593,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             audio = prefs.audio,
             overlayDisplay = prefs.overlayDisplay,
         )
+    }
+
+    override fun onCleared() {
+        pendingExportFile?.delete()
+        pendingArashiPackage?.file?.delete()
+        super.onCleared()
     }
 
     companion object {

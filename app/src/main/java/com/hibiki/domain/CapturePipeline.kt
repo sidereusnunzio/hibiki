@@ -158,6 +158,7 @@ class CapturePipeline(
         verified = false,
         source = PhraseSource.API,
         createdAt = System.currentTimeMillis(),
+        updatedAt = System.currentTimeMillis(),
         transcriptionModel = sample.transcriptionModel,
         analysisModel = analysisModel,
         transcriptionPromptVersion = sample.transcriptionPromptVersion,

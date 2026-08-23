@@ -30,12 +30,18 @@ interface ContextDao {
 
     @Query("DELETE FROM contexts WHERE id = :id AND isBuiltIn = 0")
     suspend fun deleteIfNotBuiltIn(id: String): Int
+
+    @Query("SELECT imagePath FROM contexts WHERE imagePath IS NOT NULL AND imagePath != ''")
+    suspend fun getAllImagePaths(): List<String>
 }
 
 @Dao
 interface SubjectDao {
     @Query("SELECT * FROM subjects ORDER BY displayName ASC")
     fun observeAll(): Flow<List<SubjectEntity>>
+
+    @Query("SELECT * FROM subjects ORDER BY displayName ASC")
+    suspend fun getAll(): List<SubjectEntity>
 
     @Query("SELECT * FROM subjects WHERE contextId = :contextId ORDER BY displayName ASC")
     fun observeByContext(contextId: String): Flow<List<SubjectEntity>>
@@ -61,12 +67,21 @@ interface SubjectDao {
 
     @Query("DELETE FROM subjects WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("SELECT imagePath FROM subjects WHERE imagePath IS NOT NULL AND imagePath != ''")
+    suspend fun getAllImagePaths(): List<String>
+
+    @Query("UPDATE subjects SET imagePath = :imagePath WHERE id = :id")
+    suspend fun updateImagePath(id: String, imagePath: String)
 }
 
 @Dao
 interface AudioSampleDao {
     @Query("SELECT * FROM audio_samples")
     fun observeAll(): Flow<List<AudioSampleEntity>>
+
+    @Query("SELECT * FROM audio_samples")
+    suspend fun getAll(): List<AudioSampleEntity>
 
     @Query("SELECT * FROM audio_samples WHERE audioFingerprint IS NOT NULL")
     suspend fun getWithFingerprint(): List<AudioSampleEntity>
@@ -79,12 +94,18 @@ interface AudioSampleDao {
 
     @Query("DELETE FROM audio_samples WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("SELECT audioPath FROM audio_samples WHERE audioPath IS NOT NULL AND audioPath != ''")
+    suspend fun getAllAudioPaths(): List<String>
 }
 
 @Dao
 interface PhraseDao {
     @Query("SELECT * FROM phrases ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PhraseEntity>>
+
+    @Query("SELECT * FROM phrases ORDER BY createdAt DESC")
+    suspend fun getAll(): List<PhraseEntity>
 
     @Query("SELECT * FROM phrases WHERE id = :id")
     suspend fun getById(id: String): PhraseEntity?

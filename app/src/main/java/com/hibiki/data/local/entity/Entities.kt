@@ -14,6 +14,7 @@ data class ContextEntity(
     val hasSubjects: Boolean,
     val isBuiltIn: Boolean,
     val sortOrder: Int,
+    val imagePath: String? = null,
 )
 
 @Entity(
@@ -34,6 +35,7 @@ data class SubjectEntity(
     val displayName: String,
     val japaneseName: String,
     val prompt: String,
+    val imagePath: String? = null,
 )
 
 @Entity(tableName = "audio_samples")
@@ -76,6 +78,7 @@ data class AudioSampleEntity(
         Index("contextId"),
         Index("subjectId"),
         Index("createdAt"),
+        Index("updatedAt"),
     ],
 )
 data class PhraseEntity(
@@ -91,6 +94,7 @@ data class PhraseEntity(
     val verified: Boolean,
     val source: String,
     val createdAt: Long,
+    val updatedAt: Long,
     val analysisModel: String,
     val analysisPromptVersion: Int,
 )

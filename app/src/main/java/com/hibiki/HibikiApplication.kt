@@ -14,6 +14,9 @@ class HibikiApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        applicationScope.launch(Dispatchers.IO) {
+            container.umamusumePortraitSeeder.ensureInstalled()
+        }
         applicationScope.launch {
             container.settingsRepository.preferences.collect { prefs ->
                 container.latestModels =

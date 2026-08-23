@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -19,9 +21,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,7 +40,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.hibiki.domain.model.CaptureResult
 import com.hibiki.domain.model.OverlayDisplayPrefs
@@ -44,11 +52,34 @@ import com.hibiki.domain.model.PhraseSource
 import com.hibiki.domain.model.StudyContext
 import com.hibiki.domain.model.Subject
 import com.hibiki.ui.components.HibikiButton
+import com.hibiki.ui.components.HibikiButtonColors
 import com.hibiki.ui.components.HibikiButtonStyles
+import com.hibiki.ui.components.HibikiConfirmDialog
 import com.hibiki.ui.components.SectionLabel
 import com.hibiki.ui.theme.Cyberpunk
 
 private enum class OverlayMenu { Context, Subject }
+
+private val OverlayBufferOff = HibikiButtonColors(
+    containerColor = Cyberpunk.withAlpha(Cyberpunk.PanelElevated, 0.28f),
+    contentColor = Cyberpunk.NeonLime,
+)
+private val OverlayBufferOn = HibikiButtonColors(
+    containerColor = Cyberpunk.withAlpha(Cyberpunk.NeonLime, 0.55f),
+    contentColor = Cyberpunk.Void,
+)
+private val OverlayBufferOffSolid = HibikiButtonColors(
+    containerColor = Cyberpunk.PanelElevated,
+    contentColor = Cyberpunk.NeonLime,
+)
+private val OverlayRecord = HibikiButtonColors(
+    containerColor = Cyberpunk.withAlpha(Cyberpunk.NeonMagenta, 0.28f),
+    contentColor = Cyberpunk.NeonMagenta,
+)
+private val OverlayRecordActive = HibikiButtonColors(
+    containerColor = Cyberpunk.withAlpha(Cyberpunk.NeonMagenta, 0.45f),
+    contentColor = Cyberpunk.NeonMagenta,
+)
 
 @Composable
 fun OverlayPanel(
@@ -59,15 +90,22 @@ fun OverlayPanel(
     onSelectContext: (StudyContext) -> Unit,
     onSelectSubject: (Subject) -> Unit,
     onListenToggle: () -> Unit,
+    onBufferToggle: () -> Unit,
     onPlay: () -> Unit,
-    onClose: () -> Unit,
+    onCloseOverlay: () -> Unit,
+    onCloseApp: () -> Unit,
     onDropdownFocus: (Boolean) -> Unit,
 ) {
     val shape = RoundedCornerShape(4.dp)
     var openMenu by remember { mutableStateOf<OverlayMenu?>(null) }
+    var showCloseConfirm by remember { mutableStateOf(false) }
     fun setMenu(menu: OverlayMenu?) {
         openMenu = menu
-        onDropdownFocus(menu != null)
+        onDropdownFocus(menu != null || showCloseConfirm)
+    }
+    fun setCloseConfirm(visible: Boolean) {
+        showCloseConfirm = visible
+        onDropdownFocus(visible || openMenu != null)
     }
     val hasSubjects = state.selectedContext?.hasSubjects == true
     LaunchedEffect(hasSubjects, state.collapsed) {
@@ -78,9 +116,13 @@ fun OverlayPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Cyberpunk.PanelTranslucent, shape)
+            .background(
+                if (state.collapsed) Cyberpunk.withAlpha(Cyberpunk.Panel, 0.38f)
+                else Cyberpunk.PanelTranslucent,
+                shape,
+            )
             .border(1.dp, Cyberpunk.GridLine, shape)
-            .padding(10.dp),
+            .padding(if (state.collapsed) 4.dp else 10.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -90,26 +132,39 @@ fun OverlayPanel(
                 imageVector = Icons.Filled.DragHandle,
                 contentDescription = "Sposta",
                 tint = Cyberpunk.MutedCyan,
-                modifier = Modifier.pointerInput(Unit) {
-                    detectDragGestures { change, dragAmount ->
-                        change.consume()
-                        onDrag(dragAmount.x.toInt(), dragAmount.y.toInt())
-                    }
-                },
+                modifier = Modifier
+                    .size(if (state.collapsed) 20.dp else 24.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            onDrag(dragAmount.x.toInt(), dragAmount.y.toInt())
+                        }
+                    },
             )
             Spacer(modifier = Modifier.weight(1f))
-            IconButton(onClick = onToggleCollapsed) {
+            IconButton(
+                onClick = onToggleCollapsed,
+                modifier = if (state.collapsed) Modifier.size(32.dp) else Modifier,
+            ) {
                 Icon(
                     imageVector = if (state.collapsed) Icons.Filled.Add else Icons.Filled.Remove,
                     contentDescription = if (state.collapsed) "Mostra configurazione" else "Nascondi configurazione",
                     tint = Cyberpunk.TextMuted,
+                    modifier = Modifier.size(if (state.collapsed) 16.dp else 24.dp),
                 )
             }
-            IconButton(onClick = onClose) {
+            IconButton(
+                onClick = {
+                    setMenu(null)
+                    setCloseConfirm(true)
+                },
+                modifier = if (state.collapsed) Modifier.size(32.dp) else Modifier,
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = "Spegni overlay",
                     tint = Cyberpunk.NeonMagenta,
+                    modifier = Modifier.size(if (state.collapsed) 16.dp else 24.dp),
                 )
             }
         }
@@ -145,7 +200,31 @@ fun OverlayPanel(
             state = state,
             displayPrefs = displayPrefs,
             onListenToggle = onListenToggle,
+            onBufferToggle = onBufferToggle,
             onPlay = onPlay,
+        )
+    }
+    if (showCloseConfirm) {
+        val listening = state.stage == OverlayStage.LISTENING
+        HibikiConfirmDialog(
+            title = "Chiudere l'overlay?",
+            message = buildString {
+                append("Scegli se tornare alla home dell'app o chiudere del tutto.")
+                if (listening) append(" L'ascolto in corso verrà interrotto.")
+            },
+            alternateConfirmLabel = "CHIUDI OVERLAY",
+            alternateConfirmStyle = HibikiButtonStyles.Violet,
+            onAlternateConfirm = {
+                setCloseConfirm(false)
+                onCloseOverlay()
+            },
+            confirmLabel = "CHIUDI APP",
+            confirmStyle = HibikiButtonStyles.Destructive,
+            onConfirm = {
+                setCloseConfirm(false)
+                onCloseApp()
+            },
+            onDismiss = { setCloseConfirm(false) },
         )
     }
 }
@@ -155,6 +234,7 @@ private fun OverlayBody(
     state: OverlayUiState,
     displayPrefs: OverlayDisplayPrefs,
     onListenToggle: () -> Unit,
+    onBufferToggle: () -> Unit,
     onPlay: () -> Unit,
 ) {
     val busy = state.stage != OverlayStage.IDLE &&
@@ -163,31 +243,146 @@ private fun OverlayBody(
         state.stage != OverlayStage.LISTENING
     val localMatch = state.result?.origin == PhraseSource.LOCAL_MATCH &&
         state.stage == OverlayStage.RESULT
-    Text(
-        text = stageLabel(state),
-        color = when {
-            localMatch -> Cyberpunk.NeonLime
-            state.stage == OverlayStage.LISTENING -> Cyberpunk.NeonMagenta
-            state.stage == OverlayStage.ERROR -> Cyberpunk.NeonMagenta
-            state.stage == OverlayStage.RESULT -> Cyberpunk.NeonCyan
-            state.stage == OverlayStage.IDLE -> Cyberpunk.TextMuted
-            else -> Cyberpunk.NeonViolet
-        },
-        style = MaterialTheme.typography.labelLarge,
+    OverlayStatus(
+        state = state,
+        collapsed = state.collapsed,
+        localMatch = localMatch,
+        displayPrefs = displayPrefs,
+        onPlay = onPlay,
     )
-    if (state.stage == OverlayStage.ERROR) {
-        Text(state.errorMessage.orEmpty(), color = Cyberpunk.NeonMagenta, style = MaterialTheme.typography.bodyMedium)
-    }
-    state.result?.let { OverlayResult(it, displayPrefs, onPlay) }
-    Spacer(modifier = Modifier.height(8.dp))
     val listening = state.stage == OverlayStage.LISTENING
-    HibikiButton(
-        text = if (listening) "STOP" else "LISTEN",
-        onClick = onListenToggle,
-        style = if (listening) HibikiButtonStyles.Destructive else HibikiButtonStyles.Primary,
-        enabled = !busy,
-        loading = busy,
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(if (state.collapsed) 4.dp else 8.dp),
+    ) {
+        if (state.collapsed) {
+            OverlayGlyphButton(
+                icon = Icons.Filled.MoreTime,
+                contentDescription = "Buffer",
+                colors = if (state.bufferEnabled) OverlayBufferOn else OverlayBufferOff,
+                onClick = onBufferToggle,
+                enabled = !busy && !listening,
+                modifier = Modifier.weight(1f),
+            )
+            OverlayGlyphButton(
+                icon = if (listening) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
+                contentDescription = if (listening) "Stop" else "Listen",
+                colors = if (listening) OverlayRecordActive else OverlayRecord,
+                onClick = onListenToggle,
+                enabled = !busy,
+                loading = busy,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            HibikiButton(
+                text = "BUFFER",
+                icon = Icons.Filled.MoreTime,
+                contentDescription = "Buffer",
+                onClick = onBufferToggle,
+                style = if (state.bufferEnabled) HibikiButtonStyles.Lime else OverlayBufferOffSolid,
+                enabled = !busy && !listening,
+                fillMaxWidth = false,
+                modifier = Modifier.weight(1f),
+            )
+            HibikiButton(
+                text = if (listening) "STOP" else "LISTEN",
+                icon = if (listening) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
+                contentDescription = if (listening) "Stop" else "Listen",
+                onClick = onListenToggle,
+                style = HibikiButtonStyles.Destructive,
+                enabled = !busy,
+                loading = busy,
+                fillMaxWidth = false,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayGlyphButton(
+    icon: ImageVector,
+    contentDescription: String,
+    colors: HibikiButtonColors,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    loading: Boolean = false,
+) {
+    val shape = RoundedCornerShape(2.dp)
+    val container = if (enabled) colors.containerColor else Cyberpunk.withAlpha(Cyberpunk.PanelElevated, 0.18f)
+    val content = if (enabled) colors.contentColor else Cyberpunk.withAlpha(Cyberpunk.TextMuted, 0.55f)
+    Box(
+        modifier = modifier
+            .height(32.dp)
+            .background(container, shape)
+            .clickable(enabled = enabled && !loading, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = content,
+            )
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = content,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayStatus(
+    state: OverlayUiState,
+    collapsed: Boolean,
+    localMatch: Boolean,
+    displayPrefs: OverlayDisplayPrefs,
+    onPlay: () -> Unit,
+) {
+    val statusColor = when {
+        localMatch -> Cyberpunk.NeonLime
+        state.stage == OverlayStage.LISTENING -> Cyberpunk.NeonMagenta
+        state.stage == OverlayStage.ERROR -> Cyberpunk.NeonMagenta
+        state.stage == OverlayStage.RESULT -> Cyberpunk.NeonCyan
+        state.stage == OverlayStage.IDLE && state.bufferEnabled -> Cyberpunk.NeonLime
+        state.stage == OverlayStage.IDLE -> Cyberpunk.TextMuted
+        else -> Cyberpunk.NeonViolet
+    }
+    val statusText = when {
+        collapsed -> collapsedStatusText(state)
+        state.stage == OverlayStage.ERROR && !state.errorMessage.isNullOrBlank() -> null
+        else -> stageLabel(state)
+    }
+    if (statusText != null) {
+        Text(
+            text = statusText,
+            color = statusColor,
+            style = if (collapsed) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    if (state.stage == OverlayStage.ERROR && state.errorMessage != null) {
+        Text(
+            text = state.errorMessage.orEmpty(),
+            color = Cyberpunk.NeonMagenta,
+            style = if (collapsed) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = if (collapsed) 2 else Int.MAX_VALUE,
+        )
+    }
+    if (!collapsed) {
+        state.result?.let { OverlayResult(it, displayPrefs, onPlay) }
+        Spacer(modifier = Modifier.height(8.dp))
+    } else if (statusText != null || state.stage == OverlayStage.ERROR) {
+        Spacer(modifier = Modifier.height(4.dp))
+    }
 }
 
 @Composable
@@ -306,8 +501,16 @@ private fun subjectLabel(subject: Subject): String {
     return if (japanese.isBlank()) subject.displayName else "${subject.displayName} (${japanese})"
 }
 
+private fun collapsedStatusText(state: OverlayUiState): String? = when (state.stage) {
+    OverlayStage.IDLE -> null
+    OverlayStage.LISTENING -> state.remainingSeconds?.let { "${it}s" } ?: "REC"
+    OverlayStage.ERROR -> null
+    OverlayStage.RESULT -> null
+    else -> stageLabel(state)
+}
+
 private fun stageLabel(state: OverlayUiState): String = when (state.stage) {
-    OverlayStage.IDLE -> "IDLE"
+    OverlayStage.IDLE -> if (state.bufferEnabled) "BUFFER" else "IDLE"
     OverlayStage.LISTENING -> "LISTENING" + (state.remainingSeconds?.let { "  ${it}s" } ?: "")
     OverlayStage.PROCESSING_AUDIO -> "PROCESSING AUDIO"
     OverlayStage.SEARCHING_LOCAL_ARCHIVE -> "SEARCHING LOCAL ARCHIVE"

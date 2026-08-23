@@ -9,6 +9,7 @@ import com.hibiki.domain.model.OverlayStage
 import com.hibiki.domain.model.OverlayUiState
 import com.hibiki.domain.model.StudyContext
 import com.hibiki.domain.model.Subject
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -35,6 +36,13 @@ class OverlayController(
 
     private var listenJob: Job? = null
     private var tickerJob: Job? = null
+    private var bufferJob: Job? = null
+
+    init {
+        audioCaptureRepository.onBufferingDied = {
+            _state.update { it.copy(bufferEnabled = false) }
+        }
+    }
 
     suspend fun hydrate() {
         val prefs = settingsRepository.preferences.first()
@@ -90,6 +98,14 @@ class OverlayController(
                     _state.update { it.copy(subjects = subjects, selectedSubject = selected) }
                 }
         }
+        scope.launch {
+            settingsRepository.preferences
+                .map { it.audio.bufferDurationSeconds }
+                .distinctUntilChanged()
+                .collect { seconds ->
+                    audioCaptureRepository.setBufferDurationMs(seconds * 1_000)
+                }
+        }
     }
 
     fun setCollapsed(collapsed: Boolean, scope: CoroutineScope) {
@@ -120,6 +136,38 @@ class OverlayController(
         scope.launch { settingsRepository.setLastSubject(subject.contextId, subject.id) }
     }
 
+    fun setBufferEnabled(enabled: Boolean, scope: CoroutineScope) {
+        if (_state.value.stage == OverlayStage.LISTENING) return
+        if (_state.value.bufferEnabled == enabled) return
+        bufferJob?.cancel()
+        _state.update { it.copy(bufferEnabled = enabled) }
+        bufferJob = scope.launch {
+            try {
+                if (enabled) {
+                    val seconds = settingsRepository.preferences.first().audio.bufferDurationSeconds
+                    audioCaptureRepository.startBuffering(seconds * 1_000)
+                    if (!_state.value.bufferEnabled) {
+                        audioCaptureRepository.stopBuffering()
+                    }
+                } else {
+                    audioCaptureRepository.stopBuffering()
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                val appError = AppError.fromThrowable(error)
+                _state.update {
+                    it.copy(
+                        bufferEnabled = false,
+                        stage = OverlayStage.ERROR,
+                        errorMessage = appError.userMessage,
+                        remainingSeconds = null,
+                    )
+                }
+            }
+        }
+    }
+
     fun startListen(scope: CoroutineScope) {
         if (_state.value.stage == OverlayStage.LISTENING) return
         val context = _state.value.selectedContext ?: return
@@ -127,6 +175,7 @@ class OverlayController(
         tickerJob?.cancel()
         listenJob = scope.launch {
             try {
+                bufferJob?.join()
                 val prefs = settingsRepository.preferences.first()
                 _state.update {
                     it.copy(
@@ -162,6 +211,8 @@ class OverlayController(
                         remainingSeconds = null,
                     )
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
                 val appError = AppError.fromThrowable(error)
                 _state.update {

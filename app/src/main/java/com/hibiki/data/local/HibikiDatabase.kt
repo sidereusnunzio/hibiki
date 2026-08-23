@@ -20,7 +20,7 @@ import com.hibiki.domain.model.DefaultPrompts
 
 @Database(
     entities = [ContextEntity::class, SubjectEntity::class, AudioSampleEntity::class, PhraseEntity::class],
-    version = 5,
+    version = DatabaseConstants.SCHEMA_VERSION,
     exportSchema = true,
 )
 abstract class HibikiDatabase : RoomDatabase() {
@@ -31,8 +31,16 @@ abstract class HibikiDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): HibikiDatabase {
-            return Room.databaseBuilder(context, HibikiDatabase::class.java, "hibiki.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            return Room.databaseBuilder(context, HibikiDatabase::class.java, DatabaseConstants.DATABASE_NAME)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                    MIGRATION_6_7,
+                    MIGRATION_7_8,
+                )
                 .addCallback(SeedCallback())
                 .build()
         }
@@ -123,6 +131,31 @@ private val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+private val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "DELETE FROM subjects WHERE contextId = ?",
+            arrayOf(BuiltInIds.UMAMUSUME),
+        )
+        db.upsertUmamusumeSubjects()
+    }
+}
+
+private val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE contexts ADD COLUMN imagePath TEXT")
+        db.execSQL("ALTER TABLE subjects ADD COLUMN imagePath TEXT")
+    }
+}
+
+private val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE phrases ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE phrases SET updatedAt = createdAt WHERE updatedAt = 0")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_phrases_updatedAt` ON `phrases` (`updatedAt`)")
+    }
+}
+
 private class SeedCallback : RoomDatabase.Callback() {
     override fun onCreate(db: SupportSQLiteDatabase) {
         super.onCreate(db)
@@ -134,12 +167,6 @@ private class SeedCallback : RoomDatabase.Callback() {
             ('${BuiltInIds.UMAMUSUME}', 'Umamusume', ?, 'ja', 1, 1, 1)
             """.trimIndent(),
             arrayOf(DefaultPrompts.GENERAL, DefaultPrompts.UMAMUSUME),
-        )
-        db.execSQL(
-            """
-            INSERT INTO subjects (id, contextId, displayName, japaneseName, prompt)
-            VALUES ('copano_rickey', '${BuiltInIds.UMAMUSUME}', 'Copano Rickey', 'コパノリッキー', '')
-            """.trimIndent(),
         )
         db.upsertUmamusumeSubjects()
     }

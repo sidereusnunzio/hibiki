@@ -1,6 +1,7 @@
 package com.hibiki.ui.contexts
 
 import android.app.Application
+import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -16,6 +17,7 @@ data class SubjectEditState(
     val displayName: String = "",
     val japaneseName: String = "",
     val prompt: String = "",
+    val image: ImageEdit = ImageEdit(),
     val error: String? = null,
 )
 
@@ -28,6 +30,7 @@ class SubjectEditViewModel(
     private val subjectId: String? = savedStateHandle["subjectId"]
     private val _state = MutableStateFlow(SubjectEditState(id = subjectId.orEmpty()))
     val state: StateFlow<SubjectEditState> = _state.asStateFlow()
+    private var saved = false
 
     init {
         viewModelScope.launch {
@@ -39,10 +42,21 @@ class SubjectEditViewModel(
                         displayName = subject.displayName,
                         japaneseName = subject.japaneseName,
                         prompt = subject.prompt,
+                        image = ImageEdit(
+                            previewPath = subject.imagePath,
+                            originalPath = subject.imagePath,
+                        ),
                     )
                 }
             }
         }
+    }
+
+    override fun onCleared() {
+        if (!saved) {
+            _state.value.image.discardPending()
+        }
+        super.onCleared()
     }
 
     fun setDisplayName(value: String) {
@@ -55,6 +69,12 @@ class SubjectEditViewModel(
 
     fun setPrompt(value: String) {
         _state.value = _state.value.copy(prompt = value)
+    }
+
+    fun setImage(bitmap: Bitmap) {
+        _state.value = _state.value.copy(
+            image = _state.value.image.applyCropped(bitmap, container.imageFileStore),
+        )
     }
 
     fun save(onDone: () -> Unit) {
@@ -71,8 +91,10 @@ class SubjectEditViewModel(
                     displayName = current.displayName.trim(),
                     japaneseName = current.japaneseName.trim(),
                     prompt = current.prompt.trim(),
+                    imagePath = current.image.persist(container.imageFileStore),
                 ),
             )
+            saved = true
             onDone()
         }
     }

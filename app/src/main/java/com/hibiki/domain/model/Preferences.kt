@@ -13,6 +13,7 @@ enum class OverlayStage {
 
 data class OverlayUiState(
     val stage: OverlayStage = OverlayStage.IDLE,
+    val bufferEnabled: Boolean = false,
     val collapsed: Boolean = false,
     val selectedContext: StudyContext? = null,
     val selectedSubject: Subject? = null,
@@ -37,6 +38,7 @@ data class AudioSettings(
     val audioFormat: AudioFormat = AudioFormat.AAC,
     val fingerprintThreshold: Float = AudioMatchConfig.DEFAULT_SIMILARITY_THRESHOLD,
     val trimSilence: Boolean = true,
+    val bufferDurationSeconds: Int = AudioBufferConfig.DEFAULT_SECONDS,
 )
 
 enum class AudioFormat(val fileExtension: String, val mimeType: String) {
@@ -53,6 +55,12 @@ object AudioMatchConfig {
     const val DURATION_TOLERANCE_RATIO = 0.15
 }
 
+object AudioBufferConfig {
+    const val MIN_SECONDS = 1
+    const val MAX_SECONDS = 5
+    const val DEFAULT_SECONDS = 2
+}
+
 data class ApiSettings(
     val providerId: String = ApiProviderId.OPENAI,
     val transcriptionModel: String = "gpt-transcribe",
@@ -67,6 +75,7 @@ object ApiProviderId {
 data class AppPreferences(
     val lastContextId: String = BuiltInIds.GENERAL,
     val lastSubjectIds: Map<String, String> = emptyMap(),
+    val archiveFilters: ArchiveFilters = ArchiveFilters(),
     val overlayX: Int = 24,
     val overlayY: Int = 180,
     val overlayCollapsed: Boolean = false,

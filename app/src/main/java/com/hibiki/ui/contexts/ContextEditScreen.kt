@@ -2,7 +2,6 @@ package com.hibiki.ui.contexts
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,25 +11,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hibiki.ui.components.AppPage
 import com.hibiki.ui.components.AppPageBackAction
+import com.hibiki.ui.components.HibikiAccordion
 import com.hibiki.ui.components.HibikiButton
 import com.hibiki.ui.components.HibikiButtonStyles
-import com.hibiki.ui.components.HibikiCard
 import com.hibiki.ui.components.HibikiSelect
 import com.hibiki.ui.components.HibikiSelectOption
 import com.hibiki.ui.components.HibikiToggleRow
-import com.hibiki.ui.components.SectionLabel
+import com.hibiki.ui.components.SquareImagePicker
 import com.hibiki.ui.theme.Cyberpunk
 import com.hibiki.ui.theme.cyberpunkOutlinedTextFieldColors
 
@@ -54,6 +52,12 @@ fun ContextEditScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Nome") },
                 colors = cyberpunkOutlinedTextFieldColors(),
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            SquareImagePicker(
+                imagePath = state.image.previewPath,
+                onCropped = viewModel::setContextImage,
+                label = "Immagine contesto",
             )
             Spacer(modifier = Modifier.height(10.dp))
             HibikiSelect(
@@ -80,24 +84,35 @@ fun ContextEditScreen(
             )
             if (state.hasSubjects || state.subjects.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
-                SectionLabel("Personaggi")
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    state.subjects.forEach { draft ->
-                        SubjectDraftCard(
-                            draft = draft,
-                            onDisplayNameChange = { viewModel.setSubjectDisplayName(draft.id, it) },
-                            onJapaneseNameChange = { viewModel.setSubjectJapaneseName(draft.id, it) },
-                            onPromptChange = { viewModel.setSubjectPrompt(draft.id, it) },
-                            onRemove = { viewModel.removeSubject(draft.id) },
-                        )
+                HibikiAccordion(
+                    title = if (state.subjects.isEmpty()) {
+                        "Personaggi"
+                    } else {
+                        "Personaggi (${state.subjects.size})"
+                    },
+                    initiallyExpanded = false,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        state.subjects.forEach { draft ->
+                            key(draft.id) {
+                                SubjectDraftCard(
+                                    draft = draft,
+                                    onDisplayNameChange = { viewModel.setSubjectDisplayName(draft.id, it) },
+                                    onJapaneseNameChange = { viewModel.setSubjectJapaneseName(draft.id, it) },
+                                    onPromptChange = { viewModel.setSubjectPrompt(draft.id, it) },
+                                    onImageCropped = { viewModel.setSubjectImage(draft.id, it) },
+                                    onRemove = { viewModel.removeSubject(draft.id) },
+                                )
+                            }
+                        }
                     }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HibikiButton(
+                        "AGGIUNGI PERSONAGGIO",
+                        viewModel::addSubject,
+                        HibikiButtonStyles.Secondary,
+                    )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                HibikiButton(
-                    "AGGIUNGI PERSONAGGIO",
-                    viewModel::addSubject,
-                    HibikiButtonStyles.Secondary,
-                )
             }
             state.error?.let {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -115,29 +130,29 @@ private fun SubjectDraftCard(
     onDisplayNameChange: (String) -> Unit,
     onJapaneseNameChange: (String) -> Unit,
     onPromptChange: (String) -> Unit,
+    onImageCropped: (android.graphics.Bitmap) -> Unit,
     onRemove: () -> Unit,
 ) {
-    HibikiCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = draft.displayName.ifBlank { "Nuovo personaggio" },
-                color = Cyberpunk.TextPrimary,
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-            )
+    HibikiAccordion(
+        title = draft.displayName.ifBlank { "Nuovo personaggio" },
+        actions = {
             IconButton(onClick = onRemove) {
                 Icon(Icons.Filled.Delete, contentDescription = "Elimina", tint = Cyberpunk.NeonMagenta)
             }
-        }
+        },
+    ) {
+        SquareImagePicker(
+            imagePath = draft.image.previewPath,
+            onCropped = onImageCropped,
+            label = "Immagine personaggio",
+        )
+        Spacer(modifier = Modifier.height(10.dp))
         OutlinedTextField(
             value = draft.displayName,
             onValueChange = onDisplayNameChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Nome rōmaji") },
-            colors = cyberpunkOutlinedTextFieldColors(),
+            colors = cyberpunkOutlinedTextFieldColors(containerColor = Cyberpunk.PanelTranslucent),
             singleLine = true,
         )
         Spacer(modifier = Modifier.height(10.dp))
@@ -146,7 +161,7 @@ private fun SubjectDraftCard(
             onValueChange = onJapaneseNameChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Nome giapponese") },
-            colors = cyberpunkOutlinedTextFieldColors(),
+            colors = cyberpunkOutlinedTextFieldColors(containerColor = Cyberpunk.PanelTranslucent),
             singleLine = true,
         )
         Spacer(modifier = Modifier.height(10.dp))
@@ -156,7 +171,7 @@ private fun SubjectDraftCard(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Prompt aggiuntivo") },
             minLines = 3,
-            colors = cyberpunkOutlinedTextFieldColors(),
+            colors = cyberpunkOutlinedTextFieldColors(containerColor = Cyberpunk.PanelTranslucent),
         )
     }
 }

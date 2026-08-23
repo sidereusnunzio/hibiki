@@ -11,7 +11,7 @@ import androidx.compose.ui.res.painterResource
 import com.hibiki.R
 import com.hibiki.ui.theme.Cyberpunk
 
-/** Sfondo pietra scura (stesso asset e scrim di Arashi). */
+/** Sfondo scuro con texture (crop + scrim). */
 @Composable
 fun StoneBackground(
     scrimAlpha: Float = 0.45f,

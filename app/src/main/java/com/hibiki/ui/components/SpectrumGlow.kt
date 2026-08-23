@@ -1,5 +1,6 @@
 package com.hibiki.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -13,6 +14,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -27,6 +32,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.hibiki.ui.theme.Cyberpunk
 import kotlin.math.sin
+import kotlinx.coroutines.launch
 
 private const val MinIntensity = 0.01f
 private const val PulseCycles = 2f
@@ -47,6 +53,8 @@ private object GlowMetrics {
 }
 
 const val KanjiGlowCycleMs = 2_400
+const val TabGlowCycleMs = 1_850
+const val TabGlowSaturation = 1.65f
 val NavKanjiHaloSize = 44.dp
 
 @Immutable
@@ -59,6 +67,15 @@ data class SpectrumGlowFrame(
 data class SpectrumGlowLoop(
     val transitionT: Float,
     val intensity: Float,
+)
+
+@Immutable
+data class TabSpectrumGlow(
+    val transitionT: Float,
+    val intensity: Float,
+    val targetIndex: Int,
+    val isPending: Boolean,
+    val trigger: (Int) -> Unit,
 )
 
 private data class GlowRender(
@@ -85,8 +102,20 @@ private fun envelopePulse(t: Float): Float =
 private fun visualPulse(t: Float): Float =
     0.5f + 0.5f * sin(t.coerceIn(0f, 1f) * Math.PI.toFloat() * PulseCycles)
 
+fun spectrumTabGlowEnvelope(t: Float): Float {
+    val x = t.coerceIn(0f, 1f)
+    val rampIn = 1f - (1f - x) * (1f - x) * (1f - x) * 0.12f
+    val fadeOut = 1f - smoothstep(0.58f, 1f, x)
+    return rampIn * fadeOut * envelopePulse(x)
+}
+
 fun spectrumLoopGlowIntensity(t: Float): Float =
     0.58f + 0.42f * envelopePulse(t)
+
+private fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {
+    val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
 
 private fun glowRender(
     transitionT: Float,
@@ -137,6 +166,38 @@ fun rememberSpectrumGlowLoop(cycleMs: Int = KanjiGlowCycleMs): SpectrumGlowLoop 
     return SpectrumGlowLoop(
         transitionT = transitionT,
         intensity = spectrumLoopGlowIntensity(transitionT),
+    )
+}
+
+@Composable
+fun rememberTabSpectrumGlow(): TabSpectrumGlow {
+    val scope = rememberCoroutineScope()
+    val progress = remember { Animatable(0f) }
+    var targetIndex by remember { mutableIntStateOf(-1) }
+
+    val trigger: (Int) -> Unit = remember(scope, progress) {
+        { index ->
+            targetIndex = index
+            scope.launch {
+                progress.stop()
+                progress.snapTo(0f)
+                progress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = TabGlowCycleMs, easing = LinearEasing),
+                )
+                targetIndex = -1
+                progress.snapTo(0f)
+            }
+        }
+    }
+
+    val transitionT = progress.value
+    return TabSpectrumGlow(
+        transitionT = transitionT,
+        intensity = spectrumTabGlowEnvelope(transitionT),
+        targetIndex = targetIndex,
+        isPending = targetIndex >= 0,
+        trigger = trigger,
     )
 }
 

@@ -13,7 +13,9 @@ object CyberpunkButtonDefaults {
 }
 
 @Composable
-fun cyberpunkOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+fun cyberpunkOutlinedTextFieldColors(
+    containerColor: Color = Cyberpunk.Void,
+) = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Cyberpunk.TextPrimary,
     unfocusedTextColor = Cyberpunk.TextPrimary,
     disabledTextColor = Cyberpunk.withAlpha(Cyberpunk.TextMuted, 0.5f),
@@ -27,7 +29,7 @@ fun cyberpunkOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
     cursorColor = Cyberpunk.NeonCyan,
     focusedTrailingIconColor = Cyberpunk.TextMuted,
     unfocusedTrailingIconColor = Cyberpunk.TextMuted,
-    focusedContainerColor = Cyberpunk.Panel,
-    unfocusedContainerColor = Cyberpunk.Panel,
-    disabledContainerColor = Cyberpunk.Deep,
+    focusedContainerColor = containerColor,
+    unfocusedContainerColor = containerColor,
+    disabledContainerColor = containerColor,
 )

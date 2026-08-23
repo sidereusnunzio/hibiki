@@ -18,6 +18,7 @@ import com.hibiki.ui.components.AppPage
 import com.hibiki.ui.components.AppPageBackAction
 import com.hibiki.ui.components.HibikiButton
 import com.hibiki.ui.components.HibikiButtonStyles
+import com.hibiki.ui.components.SquareImagePicker
 import com.hibiki.ui.theme.Cyberpunk
 import com.hibiki.ui.theme.cyberpunkOutlinedTextFieldColors
 
@@ -34,6 +35,12 @@ fun SubjectEditScreen(
         actions = { AppPageBackAction(onBack) },
     ) {
         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+            SquareImagePicker(
+                imagePath = state.image.previewPath,
+                onCropped = viewModel::setImage,
+                label = "Immagine personaggio",
+            )
+            Spacer(modifier = Modifier.height(10.dp))
             OutlinedTextField(
                 value = state.displayName,
                 onValueChange = viewModel::setDisplayName,

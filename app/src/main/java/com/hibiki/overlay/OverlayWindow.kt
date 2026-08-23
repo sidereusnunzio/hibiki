@@ -43,7 +43,7 @@ class OverlayWindow(
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
         val params = WindowManager.LayoutParams(
-            dp(320),
+            dp(EXPANDED_WIDTH_DP),
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             overlayFlags(focusable = false),
@@ -62,6 +62,14 @@ class OverlayWindow(
         }
         view = composeView
         windowManager.addView(composeView, params)
+    }
+
+    fun setWidthDp(widthDp: Int) {
+        val params = layoutParams ?: return
+        val widthPx = dp(widthDp)
+        if (params.width == widthPx) return
+        params.width = widthPx
+        view?.let { windowManager.updateViewLayout(it, params) }
     }
 
     fun updatePositionBy(dx: Int, dy: Int) {
@@ -100,4 +108,9 @@ class OverlayWindow(
 
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
+
+    companion object {
+        const val EXPANDED_WIDTH_DP = 320
+        const val COLLAPSED_WIDTH_DP = 120
+    }
 }

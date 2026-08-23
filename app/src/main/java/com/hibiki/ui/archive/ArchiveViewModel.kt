@@ -13,18 +13,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-data class ArchiveUiState(
-    val items: List<PhraseListItem> = emptyList(),
-    val contexts: List<StudyContext> = emptyList(),
-    val subjects: List<Subject> = emptyList(),
-    val filters: ArchiveFilters = ArchiveFilters(),
-)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ArchiveViewModel(application: Application) : AndroidViewModel(application) {
@@ -34,6 +28,21 @@ class ArchiveViewModel(application: Application) : AndroidViewModel(application)
     val items: StateFlow<List<PhraseListItem>> = container.phraseRepository
         .observeArchive(filters)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        viewModelScope.launch {
+            val saved = container.settingsRepository.preferences.first()
+            filters.value = saved.archiveFilters
+            filters.collect { current ->
+                container.settingsRepository.setArchiveFilters(current)
+            }
+        }
+        viewModelScope.launch {
+            items.collect { list ->
+                container.archiveBrowseSession.updatePhraseIds(list.map { it.phrase.id })
+            }
+        }
+    }
 
     val contexts: StateFlow<List<StudyContext>> = container.contextRepository
         .observeContexts()
@@ -53,14 +62,8 @@ class ArchiveViewModel(application: Application) : AndroidViewModel(application)
     val currentFilters: StateFlow<ArchiveFilters> = filters.asStateFlow()
 
     fun setQuery(query: String) = filters.update { it.copy(query = query) }
-    fun setContext(contextId: String?) = filters.update { it.copy(contextId = contextId, subjectId = null) }
+    fun setContext(contextId: String) = filters.update { it.copy(contextId = contextId, subjectId = null) }
     fun setSubject(subjectId: String?) = filters.update { it.copy(subjectId = subjectId) }
-    fun setVerifiedOnly(value: Boolean) = filters.update { it.copy(verifiedOnly = value) }
-    fun setNewestFirst(value: Boolean) = filters.update { it.copy(newestFirst = value) }
-
-    fun delete(id: String) {
-        viewModelScope.launch { container.phraseRepository.delete(id) }
-    }
 
     fun play(path: String) {
         container.phraseAudioPlayer.play(path)

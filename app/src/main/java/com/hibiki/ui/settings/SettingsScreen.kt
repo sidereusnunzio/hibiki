@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hibiki.domain.model.AudioBufferConfig
 import com.hibiki.ui.components.AppPage
 import com.hibiki.ui.components.AppPageBackAction
 import com.hibiki.ui.components.DetailSection
@@ -64,6 +65,21 @@ fun SettingsScreen(
                             inactiveTrackColor = Cyberpunk.PanelElevated,
                         ),
                     )
+                    Text(
+                        "Durata buffer: ${uiState.audio.bufferDurationSeconds}s",
+                        color = Cyberpunk.TextMuted,
+                    )
+                    Slider(
+                        value = uiState.audio.bufferDurationSeconds.toFloat(),
+                        onValueChange = { viewModel.setBufferDuration(it.toInt()) },
+                        valueRange = AudioBufferConfig.MIN_SECONDS.toFloat()..AudioBufferConfig.MAX_SECONDS.toFloat(),
+                        steps = AudioBufferConfig.MAX_SECONDS - AudioBufferConfig.MIN_SECONDS - 1,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Cyberpunk.NeonCyan,
+                            activeTrackColor = Cyberpunk.NeonCyan,
+                            inactiveTrackColor = Cyberpunk.PanelElevated,
+                        ),
+                    )
                     HibikiToggleRow("Salva audio", uiState.audio.saveAudio, viewModel::setSaveAudio)
                     HibikiToggleRow("Trim silenzio", uiState.audio.trimSilence, viewModel::setTrimSilence)
                     Text("Formato: AAC / M4A", color = Cyberpunk.TextMuted)
@@ -100,6 +116,7 @@ fun SettingsScreen(
                     )
                 }
             }
+            SettingsDataSection(viewModel = viewModel)
         }
     }
 }

@@ -1,17 +1,21 @@
 package com.hibiki.ui.components
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.hibiki.ui.theme.Cyberpunk
 import com.hibiki.ui.theme.CyberpunkButtonDefaults
@@ -44,6 +48,8 @@ fun HibikiButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     loading: Boolean = false,
+    icon: ImageVector? = null,
+    contentDescription: String? = null,
     disabledContainerColor: Color = CyberpunkButtonDefaults.disabledContainerColor,
     disabledContentColor: Color = CyberpunkButtonDefaults.disabledContentColor,
     fillMaxWidth: Boolean = true,
@@ -69,7 +75,18 @@ fun HibikiButton(
                 color = style.contentColor,
             )
         } else {
-            Text(text)
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription ?: text.takeIf { it.isNotBlank() },
+                    modifier = Modifier.size(20.dp),
+                    tint = style.contentColor,
+                )
+            }
+            if (text.isNotBlank()) {
+                if (icon != null) Spacer(modifier = Modifier.width(8.dp))
+                Text(text)
+            }
         }
     }
 }
