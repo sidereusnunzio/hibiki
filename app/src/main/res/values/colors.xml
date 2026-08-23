@@ -3,5 +3,4 @@
     <!-- Window chrome only; Compose UI uses Cyberpunk tokens in Color.kt -->
     <color name="window_background">#05070F</color>
     <color name="splash_background">#05070F</color>
-    <color name="ic_launcher_background">#0D072D</color>
 </resources>

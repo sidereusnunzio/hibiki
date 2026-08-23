@@ -1,0 +1,46 @@
+---
+description: Launcher icon workflow for Hibiki (PNG-only, no crop, same as Arashi)
+alwaysApply: true
+---
+
+# Launcher icon
+
+When the user provides a new app icon image, update launcher assets with this workflow. **Do not use adaptive icons** — they split foreground/background and the launcher masks/crops the artwork.
+
+## Required layout
+
+- **Only** PNG files under `app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/`
+- `ic_launcher.png` and `ic_launcher_round.png` must be **identical** (same file content)
+- **No** `mipmap-anydpi-v26/ic_launcher*.xml`
+- **No** `drawable/ic_launcher_foreground.png` or separate launcher background color
+
+`AndroidManifest.xml` keeps `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round`.
+
+## Image handling
+
+- **Never crop** the source artwork
+- Preserve exact proportions: scale to fit inside a square canvas; **letterbox/pad** if the source is not square
+- Do **not** shrink into the adaptive-icon “safe zone”, do **not** apply circular masks before export
+- Densities: mdpi 48, hdpi 72, xhdpi 96, xxhdpi 144, xxxhdpi 192 (LANCZOS resize from a square master)
+
+## Generation reference
+
+```python
+from PIL import Image
+from pathlib import Path
+
+def fit_square(im):
+    sw, sh = im.size
+    side = max(sw, sh)
+    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    scale = min(side / sw, side / sh)
+    nw, nh = max(1, int(round(sw * scale))), max(1, int(round(sh * scale)))
+    resized = im.resize((nw, nh), Image.LANCZOS)
+    canvas.alpha_composite(resized, ((side - nw) // 2, (side - nh) // 2))
+    return canvas
+
+# For each density: master = fit_square(source); out = master.resize((size, size), Image.LANCZOS)
+# Save the same RGB PNG as both ic_launcher.png and ic_launcher_round.png
+```
+
+Arashi uses the same convention — keep both apps aligned when updating either icon.
