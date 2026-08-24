@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hibiki.domain.model.ArashiSyncState
 import com.hibiki.domain.model.PhraseListItem
 import com.hibiki.ui.components.AppPage
 import com.hibiki.ui.components.ArashiKanji
@@ -139,6 +140,14 @@ private fun PhraseRow(
                     )
                 }
             }
+            if (item.phrase.arashiSyncState != ArashiSyncState.DO_NOT_SYNC) {
+                Box(
+                    modifier = Modifier.size(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ArashiKanji(syncState = item.phrase.arashiSyncState)
+                }
+            }
             item.listThumbPath?.let { path ->
                 SquareThumb(
                     path = path,
@@ -154,12 +163,6 @@ private fun PhraseRow(
                             },
                         ),
                 )
-            }
-            Box(
-                modifier = Modifier.size(24.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                ArashiKanji(syncState = item.phrase.arashiSyncState)
             }
         }
     }

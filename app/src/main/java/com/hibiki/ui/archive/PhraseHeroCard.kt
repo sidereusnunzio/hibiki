@@ -118,7 +118,7 @@ fun PhraseHeroCard(
                         if (state.phrase.literalTranslation.isNotBlank()) {
                             Text(
                                 text = state.phrase.literalTranslation,
-                                color = Cyberpunk.TextMuted,
+                                color = Cyberpunk.MutedLime,
                                 textAlign = TextAlign.Start,
                                 modifier = Modifier
                                     .fillMaxWidth()

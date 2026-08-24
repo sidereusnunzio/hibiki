@@ -28,8 +28,16 @@ import com.hibiki.ui.components.DetailSection
 import com.hibiki.ui.components.HibikiButton
 import com.hibiki.ui.components.HibikiButtonStyles
 import com.hibiki.ui.components.HibikiConfirmDialog
+import com.hibiki.ui.components.HibikiSelect
+import com.hibiki.ui.components.HibikiSelectOption
 import com.hibiki.ui.components.SegmentedTabs
 import com.hibiki.ui.theme.Cyberpunk
+
+private val ArashiSyncOptions = listOf(
+    HibikiSelectOption(ArashiSyncState.DO_NOT_SYNC.name, "Non sincronizzare"),
+    HibikiSelectOption(ArashiSyncState.PENDING.name, "Da sincronizzare"),
+    HibikiSelectOption(ArashiSyncState.SYNCED.name, "Sincronizzata"),
+)
 
 @Composable
 fun PhraseAdvancedEditScreen(
@@ -121,17 +129,13 @@ fun PhraseAdvancedEditScreen(
             }
 
             DetailSection(title = "Sincronizzazione Arashi") {
-                val syncLabels = listOf("Non sincronizzare", "Da sincronizzare", "Sincronizzata")
-                val syncStates = listOf(
-                    ArashiSyncState.DO_NOT_SYNC,
-                    ArashiSyncState.PENDING,
-                    ArashiSyncState.SYNCED,
-                )
-                val selectedSyncIndex = syncStates.indexOf(current.arashiSyncState).coerceAtLeast(0)
-                SegmentedTabs(
-                    labels = syncLabels,
-                    selectedIndex = selectedSyncIndex,
-                    onSelect = { index -> viewModel.setArashiSyncState(syncStates[index]) },
+                HibikiSelect(
+                    label = "Stato",
+                    selected = current.arashiSyncState.name,
+                    options = ArashiSyncOptions,
+                    onSelected = { value ->
+                        viewModel.setArashiSyncState(ArashiSyncState.valueOf(value))
+                    },
                 )
             }
 
