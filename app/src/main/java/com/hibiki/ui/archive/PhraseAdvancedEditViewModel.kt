@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.hibiki.container
 import com.hibiki.domain.model.AppError
+import com.hibiki.domain.model.ArashiSyncState
 import com.hibiki.domain.model.Phrase
 import com.hibiki.domain.model.StudyContext
 import com.hibiki.domain.model.Subject
@@ -28,6 +29,7 @@ data class PhraseAdvancedEditUi(
     val natural: String,
     val contextId: String,
     val subjectId: String?,
+    val arashiSyncState: ArashiSyncState,
     val saving: Boolean = false,
     val regenerating: Boolean = false,
     val error: String? = null,
@@ -80,6 +82,7 @@ class PhraseAdvancedEditViewModel(
                     natural = phrase.naturalTranslation,
                     contextId = current?.contextId ?: phrase.contextId,
                     subjectId = current?.subjectId ?: phrase.subjectId,
+                    arashiSyncState = current?.arashiSyncState ?: phrase.arashiSyncState,
                     saving = false,
                     regenerating = false,
                     error = current?.error,
@@ -101,6 +104,8 @@ class PhraseAdvancedEditViewModel(
 
     fun setSubject(subjectId: String?) = extra.updateField { it.copy(subjectId = subjectId) }
 
+    fun setArashiSyncState(state: ArashiSyncState) = extra.updateField { it.copy(arashiSyncState = state) }
+
     fun save() {
         val current = extra.value ?: return
         viewModelScope.launch {
@@ -119,6 +124,7 @@ class PhraseAdvancedEditViewModel(
                         romaji = current.romaji,
                         literalTranslation = current.literal,
                         naturalTranslation = current.natural,
+                        arashiSyncState = current.arashiSyncState,
                     ),
                 )
             }.onFailure { error ->

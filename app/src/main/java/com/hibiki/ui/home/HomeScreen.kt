@@ -19,6 +19,7 @@ fun HomeScreen(
     onStartOverlay: () -> Unit,
     onOpenContexts: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAbout: () -> Unit,
 ) {
     BoxWithConstraints(
         modifier = Modifier.fillMaxSize(),
@@ -58,6 +59,7 @@ fun HomeScreen(
             HomeActionsMenu(
                 onOpenContexts = onOpenContexts,
                 onOpenSettings = onOpenSettings,
+                onOpenAbout = onOpenAbout,
             )
         }
     }

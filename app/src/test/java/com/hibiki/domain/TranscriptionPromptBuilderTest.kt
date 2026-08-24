@@ -84,6 +84,7 @@ Può utilizzare forme colloquiali come ない → ねえ.
         val prompt = DefaultPrompts.LANGUAGE_ANALYSIS
         assertTrue(prompt.contains("frase fornita è immutabile"))
         assertTrue(prompt.contains("- kana:"))
+        assertTrue(prompt.contains("con spazi tra le parole"))
         assertTrue(prompt.contains("- romaji:"))
         assertTrue(prompt.contains("- literalTranslation:"))
         assertTrue(prompt.contains("ordine giapponese"))

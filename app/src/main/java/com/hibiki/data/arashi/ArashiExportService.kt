@@ -14,6 +14,7 @@ data class ArashiExportPackage(
     val exportType: ArashiExportType,
     val phraseCount: Int,
     val exportedAtEpochMs: Long,
+    val exportedPhraseIds: List<String>,
 )
 
 class ArashiExportService(
@@ -23,19 +24,19 @@ class ArashiExportService(
 ) {
     suspend fun createPackage(
         outputFile: File,
-        requestedType: ArashiExportType,
-        lastSuccessfulExportAtMs: Long?,
+        phraseIds: List<String>? = null,
         nowEpochMs: Long = System.currentTimeMillis(),
     ): ArashiExportPackage {
-        val phrases = phraseRepository.getAll()
-        val selected = ArashiExportSelector.select(
-            phrases = phrases,
-            type = requestedType,
-            lastSuccessfulExportAtMs = lastSuccessfulExportAtMs,
-        )
-        val exportType = ArashiExportSelector.effectiveType(requestedType, lastSuccessfulExportAtMs)
+        val allPhrases = phraseRepository.getAll()
+        val selected = when {
+            phraseIds != null -> {
+                val requested = phraseIds.toSet()
+                allPhrases.filter { it.id in requested }
+            }
+            else -> ArashiExportSelector.selectPending(allPhrases)
+        }
         if (selected.isEmpty()) {
-            throw ArashiExportException.NothingToExport(exportType)
+            throw ArashiExportException.NothingToExport
         }
 
         val db = databaseProvider.getDatabase()
@@ -57,6 +58,7 @@ class ArashiExportService(
         }
 
         val exportId = UUID.randomUUID().toString()
+        val exportType = ArashiExportType.PARTIAL
         val manifest = ArashiExportManifest(
             schemaVersion = ArashiExportContract.SCHEMA_VERSION,
             sourceApp = ArashiExportContract.SOURCE_APP,
@@ -72,16 +74,11 @@ class ArashiExportService(
             exportType = exportType,
             phraseCount = dtos.size,
             exportedAtEpochMs = nowEpochMs,
+            exportedPhraseIds = selected.map { it.id },
         )
     }
 }
 
 sealed class ArashiExportException(message: String) : Exception(message) {
-    class NothingToExport(val exportType: ArashiExportType) : ArashiExportException(
-        if (exportType == ArashiExportType.PARTIAL) {
-            "Nessuna frase nuova o modificata da esportare"
-        } else {
-            "Nessuna frase da esportare"
-        },
-    )
+    data object NothingToExport : ArashiExportException("Nessuna frase da sincronizzare con Arashi")
 }

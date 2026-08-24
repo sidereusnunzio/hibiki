@@ -6,6 +6,7 @@ sealed class Route(val path: String) {
 
     data object Home : Route("home")
     data object HomeSettings : Route("home/settings")
+    data object HomeAbout : Route("home/about")
     data object Contexts : Route("home/contexts")
     data object ContextEdit : Route("home/contextEdit?contextId={contextId}") {
         fun create(contextId: String? = null): String =

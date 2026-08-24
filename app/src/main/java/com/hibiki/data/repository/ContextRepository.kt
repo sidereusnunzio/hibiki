@@ -84,19 +84,26 @@ class ContextRepository(
         }
     }
 
+    fun observeOverlaySubjects(contextId: String): Flow<List<Subject>> =
+        observeSubjects(contextId).map { subjects -> subjects.filter { it.overlayEnabled } }
+
     suspend fun getSubjects(contextId: String): List<Subject> =
         subjectDao.getByContext(contextId).map { it.toModel() }
+
+    suspend fun getOverlaySubjects(contextId: String): List<Subject> =
+        getSubjects(contextId).filter { it.overlayEnabled }
 
     suspend fun getSubject(id: String): Subject? =
         subjectDao.getById(id)?.toModel()
 
     suspend fun saveSubject(subject: Subject) {
         val id = subject.id.ifBlank { slug(subject.displayName) }
+        val entity = subject.copy(id = id).toEntity()
         val previous = subjectDao.getById(id)
-        if (previous?.imagePath != null && previous.imagePath != subject.imagePath) {
+        if (previous?.imagePath != null && previous.imagePath != entity.imagePath) {
             imageFileStore.delete(previous.imagePath)
         }
-        subjectDao.upsert(subject.copy(id = id).toEntity())
+        subjectDao.upsert(entity)
     }
 
     suspend fun deleteSubject(id: String) {

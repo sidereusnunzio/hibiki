@@ -36,6 +36,7 @@ data class SubjectEntity(
     val japaneseName: String,
     val prompt: String,
     val imagePath: String? = null,
+    val overlayEnabled: Boolean = true,
 )
 
 @Entity(tableName = "audio_samples")
@@ -92,9 +93,31 @@ data class PhraseEntity(
     val literalTranslation: String,
     val naturalTranslation: String,
     val verified: Boolean,
+    val arashiSyncState: String = "DO_NOT_SYNC",
     val source: String,
     val createdAt: Long,
     val updatedAt: Long,
     val analysisModel: String,
     val analysisPromptVersion: Int,
+)
+
+@Entity(
+    tableName = "audio_prototypes",
+    foreignKeys = [
+        ForeignKey(
+            entity = PhraseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["phraseId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("phraseId")],
+)
+data class AudioPrototypeEntity(
+    @PrimaryKey val id: String,
+    val phraseId: String,
+    val audioFingerprint: ByteArray?,
+    val durationMs: Long,
+    val pcmPreview: ByteArray?,
+    val createdAt: Long,
 )

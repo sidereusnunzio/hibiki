@@ -1,6 +1,7 @@
 package com.hibiki.data.repository
 
 import android.media.projection.MediaProjection
+import com.hibiki.data.audio.RecordedClip
 import com.hibiki.data.audio.PcmClip
 import com.hibiki.data.audio.PlaybackAudioRecorder
 import com.hibiki.data.audio.SilenceTrimmer
@@ -48,12 +49,12 @@ class AudioCaptureRepository {
         recorder.stopBuffering()
     }
 
-    suspend fun recordClip(maxDurationMs: Long, trimSilence: Boolean): PcmClip =
+    suspend fun recordClip(maxDurationMs: Long, trimSilence: Boolean): RecordedClip =
         withContext(Dispatchers.IO) {
             val projection = mediaProjection ?: throw AppException(AppError.MediaProjectionDenied)
             val raw = recorder.record(projection, maxDurationMs)
-            val clip = if (trimSilence) SilenceTrimmer.trim(raw) else raw
-            if (clip.isEmpty) throw AppException(AppError.EmptyRecording)
-            clip
+            val trimmed = if (trimSilence) SilenceTrimmer.trim(raw) else raw
+            if (trimmed.isEmpty) throw AppException(AppError.EmptyRecording)
+            RecordedClip(trimmed = trimmed, raw = raw)
         }
 }

@@ -20,6 +20,7 @@ data class OverlayUiState(
     val contexts: List<StudyContext> = emptyList(),
     val subjects: List<Subject> = emptyList(),
     val result: CaptureResult? = null,
+    val phrasePanelVisible: Boolean = false,
     val errorMessage: String? = null,
     val remainingSeconds: Int? = null,
 )
@@ -47,12 +48,30 @@ enum class AudioFormat(val fileExtension: String, val mimeType: String) {
 
 /**
  * Parametri di matching audio.
- * Soglia e tolleranza durata vanno calibrate su registrazioni reali: non modificarle senza dati.
+ * La durata totale non è un criterio di decisione (record/stop manuale).
+ * Si confronta uno spezzone intorno a metà clip cercato nei candidati.
  */
 object AudioMatchConfig {
     const val DEFAULT_SIMILARITY_THRESHOLD = 0.92f
+    /** Stage 1: retrieval opzionale — allarga il pool, non decide il match. */
+    const val RETRIEVAL_SIMILARITY_THRESHOLD = 0.70f
+    const val RETRIEVAL_TOP_CANDIDATES = 15
+    /**
+     * Spezzone preso dalla nuova registrazione: centro poco dopo metà,
+     * durata tipica ~500 ms (clamp su clip cortissime).
+     */
+    const val PROBE_CENTER_RATIO = 0.55f
+    const val PROBE_DURATION_MS = 500L
+    const val PROBE_MIN_MS = 250L
+    /** Soglia relativa al picco per individuare la regione sonora (esclude silenzi di start/stop). */
+    const val ACTIVE_ENERGY_RATIO = 0.15f
+    /** Passo di ricerca temporale (ms): non severo sul timing. */
+    const val SEGMENT_SEARCH_HOP_MS = 15L
+    /** Stage 2: lo spezzone coincide abbastanza con un tratto dell'archivio. */
+    const val STRONG_SEGMENT_SCORE = 0.88f
+    const val MAX_PROTOTYPES_PER_PHRASE = 3
     const val DURATION_TOLERANCE_MIN_MS = 300L
-    const val DURATION_TOLERANCE_RATIO = 0.15
+    const val DURATION_TOLERANCE_RATIO = 0.20
 }
 
 object AudioBufferConfig {

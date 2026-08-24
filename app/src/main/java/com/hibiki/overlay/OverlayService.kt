@@ -35,6 +35,9 @@ import kotlinx.coroutines.launch
 class OverlayService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var overlayWindow: OverlayWindow? = null
+    private var phraseWindow: OverlayWindow? = null
+    private var phrasePosX: Int? = null
+    private var phrasePosY: Int? = null
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
@@ -169,9 +172,27 @@ class OverlayService : Service() {
                         else OverlayWindow.EXPANDED_WIDTH_DP,
                     )
                 }
+                LaunchedEffect(uiState.stage) {
+                    if (uiState.stage == OverlayStage.LISTENING) {
+                        phrasePosX = null
+                        phrasePosY = null
+                    }
+                }
+                LaunchedEffect(
+                    uiState.result,
+                    uiState.phrasePanelVisible,
+                    appPrefs.overlayX,
+                    appPrefs.overlayY,
+                ) {
+                    syncPhraseWindow(
+                        controller = controller,
+                        app = app,
+                        mainX = appPrefs.overlayX,
+                        mainY = appPrefs.overlayY,
+                    )
+                }
                 OverlayPanel(
                     state = uiState,
-                    displayPrefs = appPrefs.overlayDisplay,
                     onDrag = { dx, dy -> overlayWindow?.updatePositionBy(dx, dy) },
                     onToggleCollapsed = { controller.setCollapsed(!uiState.collapsed, scope) },
                     onSelectContext = { controller.selectContext(it, scope) },
@@ -181,6 +202,8 @@ class OverlayService : Service() {
                             OverlayStage.LISTENING -> controller.stopListen()
                             OverlayStage.IDLE -> controller.startListen(scope)
                             OverlayStage.RESULT, OverlayStage.ERROR -> {
+                                phrasePosX = null
+                                phrasePosY = null
                                 controller.resetToIdle()
                                 controller.startListen(scope)
                             }
@@ -190,9 +213,7 @@ class OverlayService : Service() {
                     onBufferToggle = {
                         controller.setBufferEnabled(!uiState.bufferEnabled, scope)
                     },
-                    onPlay = {
-                        uiState.result?.phrase?.audioPath?.let { app.container.phraseAudioPlayer.play(it) }
-                    },
+                    onOpenPhrasePanel = { controller.setPhrasePanelVisible(true) },
                     onCloseOverlay = {
                         controller.stopListen()
                         MainActivity.openHome(this@OverlayService)
@@ -202,15 +223,67 @@ class OverlayService : Service() {
                         controller.stopListen()
                         stopSelf()
                     },
+                    onCloseConfirmVisible = { visible ->
+                        overlayWindow?.setWidthDp(
+                            when {
+                                visible -> OverlayWindow.EXPANDED_WIDTH_DP
+                                uiState.collapsed -> OverlayWindow.COLLAPSED_WIDTH_DP
+                                else -> OverlayWindow.EXPANDED_WIDTH_DP
+                            },
+                        )
+                    },
                     onDropdownFocus = { open -> overlayWindow?.setFocusable(open) },
                 )
             }
         }
     }
 
+    private fun syncPhraseWindow(
+        controller: OverlayController,
+        app: HibikiApplication,
+        mainX: Int,
+        mainY: Int,
+    ) {
+        val uiState = controller.state.value
+        val shouldShow = uiState.result != null && uiState.phrasePanelVisible
+        if (!shouldShow) {
+            dismissPhraseWindow()
+            return
+        }
+        if (phraseWindow == null) {
+            phraseWindow = OverlayWindow(this) { x, y ->
+                phrasePosX = x
+                phrasePosY = y
+            }
+            val offsetPx = (OverlayWindow.PHRASE_OFFSET_Y_DP * resources.displayMetrics.density).toInt()
+            val startX = phrasePosX ?: mainX
+            val startY = phrasePosY ?: (mainY + offsetPx)
+            phraseWindow?.attach(startX, startY, OverlayWindow.PHRASE_WIDTH_DP) {
+                val state by controller.state.collectAsState()
+                val current = state.result
+                if (current != null && state.phrasePanelVisible) {
+                    OverlayPhrasePanel(
+                        result = current,
+                        onDrag = { dx, dy -> phraseWindow?.updatePositionBy(dx, dy) },
+                        onClose = { controller.setPhrasePanelVisible(false) },
+                        onPlay = {
+                            current.phrase.audioPath?.let { app.container.phraseAudioPlayer.play(it) }
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun dismissPhraseWindow() {
+        phraseWindow?.dismiss()
+        phraseWindow = null
+    }
+
     override fun onDestroy() {
         running = false
         scope.cancel()
+        dismissPhraseWindow()
         overlayWindow?.dismiss()
         overlayWindow = null
         container().audioCaptureRepository.detachProjection()

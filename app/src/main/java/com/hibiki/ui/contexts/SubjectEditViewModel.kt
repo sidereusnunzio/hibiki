@@ -18,6 +18,7 @@ data class SubjectEditState(
     val japaneseName: String = "",
     val prompt: String = "",
     val image: ImageEdit = ImageEdit(),
+    val overlayEnabled: Boolean = true,
     val error: String? = null,
 )
 
@@ -46,6 +47,7 @@ class SubjectEditViewModel(
                             previewPath = subject.imagePath,
                             originalPath = subject.imagePath,
                         ),
+                        overlayEnabled = subject.overlayEnabled,
                     )
                 }
             }
@@ -92,6 +94,7 @@ class SubjectEditViewModel(
                     japaneseName = current.japaneseName.trim(),
                     prompt = current.prompt.trim(),
                     imagePath = current.image.persist(container.imageFileStore),
+                    overlayEnabled = current.overlayEnabled,
                 ),
             )
             saved = true

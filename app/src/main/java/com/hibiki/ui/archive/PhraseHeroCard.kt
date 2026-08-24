@@ -40,6 +40,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hibiki.ui.components.ArashiKanji
+import com.hibiki.ui.components.ARASHI_KANJI
 import com.hibiki.ui.components.SquareThumb
 import com.hibiki.ui.theme.Cyberpunk
 
@@ -54,6 +56,7 @@ fun PhraseHeroCard(
     onPlay: () -> Unit,
     onInspect: () -> Unit,
     onAdvancedEdit: () -> Unit,
+    onSyncWithArashi: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val japanese = state.phrase.japaneseDisplay
@@ -169,13 +172,25 @@ fun PhraseHeroCard(
                 }
             }
 
-            PhraseHeroActionsMenu(
-                onInspect = onInspect,
-                onAdvancedEdit = onAdvancedEdit,
+            Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = 4.dp, end = 4.dp),
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                PhraseHeroActionsMenu(
+                    onInspect = onInspect,
+                    onAdvancedEdit = onAdvancedEdit,
+                    onSyncWithArashi = onSyncWithArashi,
+                    syncingWithArashi = state.syncingWithArashi,
+                )
+                Box(
+                    modifier = Modifier.size(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ArashiKanji(syncState = state.phrase.arashiSyncState)
+                }
+            }
         }
     }
 }
@@ -231,10 +246,11 @@ private fun showPromptToast(context: android.content.Context, title: String, pro
 private fun PhraseHeroActionsMenu(
     onInspect: () -> Unit,
     onAdvancedEdit: () -> Unit,
-    modifier: Modifier = Modifier,
+    onSyncWithArashi: () -> Unit,
+    syncingWithArashi: Boolean,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
+    Box {
         Box(
             modifier = Modifier
                 .size(32.dp)
@@ -254,22 +270,6 @@ private fun PhraseHeroActionsMenu(
             containerColor = Cyberpunk.PanelElevated,
         ) {
             DropdownMenuItem(
-                text = { Text("Ispeziona scheda", color = Cyberpunk.TextPrimary) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ManageSearch,
-                        contentDescription = null,
-                        tint = Cyberpunk.TextPrimary,
-                        modifier = Modifier.size(20.dp),
-                    )
-                },
-                onClick = {
-                    expanded = false
-                    onInspect()
-                },
-            )
-            HorizontalDivider(color = Cyberpunk.GridLine)
-            DropdownMenuItem(
                 text = { Text("Modifica avanzata", color = Cyberpunk.TextPrimary) },
                 leadingIcon = {
                     Icon(
@@ -282,6 +282,37 @@ private fun PhraseHeroActionsMenu(
                 onClick = {
                     expanded = false
                     onAdvancedEdit()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Sincronizza con Arashi", color = Cyberpunk.TextPrimary) },
+                enabled = !syncingWithArashi,
+                leadingIcon = {
+                    Text(
+                        text = ARASHI_KANJI,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Cyberpunk.TextPrimary,
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onSyncWithArashi()
+                },
+            )
+            HorizontalDivider(color = Cyberpunk.GridLine)
+            DropdownMenuItem(
+                text = { Text("Ispeziona scheda", color = Cyberpunk.TextPrimary) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ManageSearch,
+                        contentDescription = null,
+                        tint = Cyberpunk.TextPrimary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onInspect()
                 },
             )
         }

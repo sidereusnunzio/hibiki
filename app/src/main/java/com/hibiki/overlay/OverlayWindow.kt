@@ -35,7 +35,12 @@ class OverlayWindow(
     override val viewModelStore: ViewModelStore get() = store
     override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
 
-    fun attach(initialX: Int, initialY: Int, content: @Composable () -> Unit) {
+    fun attach(
+        initialX: Int,
+        initialY: Int,
+        widthDp: Int = EXPANDED_WIDTH_DP,
+        content: @Composable () -> Unit,
+    ) {
         if (view != null) return
         savedStateController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
@@ -43,7 +48,7 @@ class OverlayWindow(
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
         val params = WindowManager.LayoutParams(
-            dp(EXPANDED_WIDTH_DP),
+            dp(widthDp),
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             overlayFlags(focusable = false),
@@ -112,5 +117,7 @@ class OverlayWindow(
     companion object {
         const val EXPANDED_WIDTH_DP = 320
         const val COLLAPSED_WIDTH_DP = 120
+        const val PHRASE_WIDTH_DP = 320
+        const val PHRASE_OFFSET_Y_DP = 220
     }
 }

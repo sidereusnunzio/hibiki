@@ -1,7 +1,5 @@
 package com.hibiki.ui.archive
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,10 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,7 +20,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hibiki.domain.model.PhraseListItem
 import com.hibiki.ui.components.AppPage
+import com.hibiki.ui.components.ArashiKanji
 import com.hibiki.ui.components.HibikiCard
 import com.hibiki.ui.components.HibikiCountChip
 import com.hibiki.ui.components.SegmentedTabs
@@ -150,26 +144,22 @@ private fun PhraseRow(
                     path = path,
                     contentDescription = item.subjectDisplayName ?: item.contextName,
                     showPlaceholder = false,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier
+                        .size(48.dp)
+                        .then(
+                            if (item.phrase.audioPath != null) {
+                                Modifier.clickable(onClick = onPlay)
+                            } else {
+                                Modifier
+                            },
+                        ),
                 )
             }
-            if (item.phrase.audioPath != null) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Cyberpunk.withAlpha(Cyberpunk.NeonCyan, 0.16f))
-                        .border(1.dp, Cyberpunk.NeonCyan, CircleShape)
-                        .clickable(onClick = onPlay),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "Play",
-                        tint = Cyberpunk.NeonCyan,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
+            Box(
+                modifier = Modifier.size(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                ArashiKanji(syncState = item.phrase.arashiSyncState)
             }
         }
     }

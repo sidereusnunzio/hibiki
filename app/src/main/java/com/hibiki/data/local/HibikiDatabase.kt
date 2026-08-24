@@ -6,10 +6,12 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.hibiki.data.local.dao.AudioPrototypeDao
 import com.hibiki.data.local.dao.AudioSampleDao
 import com.hibiki.data.local.dao.ContextDao
 import com.hibiki.data.local.dao.PhraseDao
 import com.hibiki.data.local.dao.SubjectDao
+import com.hibiki.data.local.entity.AudioPrototypeEntity
 import com.hibiki.data.local.entity.AudioSampleEntity
 import com.hibiki.data.local.entity.ContextEntity
 import com.hibiki.data.local.entity.PhraseEntity
@@ -19,7 +21,7 @@ import com.hibiki.domain.model.BuiltInUmamusume
 import com.hibiki.domain.model.DefaultPrompts
 
 @Database(
-    entities = [ContextEntity::class, SubjectEntity::class, AudioSampleEntity::class, PhraseEntity::class],
+    entities = [ContextEntity::class, SubjectEntity::class, AudioSampleEntity::class, PhraseEntity::class, AudioPrototypeEntity::class],
     version = DatabaseConstants.SCHEMA_VERSION,
     exportSchema = true,
 )
@@ -27,6 +29,7 @@ abstract class HibikiDatabase : RoomDatabase() {
     abstract fun contextDao(): ContextDao
     abstract fun subjectDao(): SubjectDao
     abstract fun audioSampleDao(): AudioSampleDao
+    abstract fun audioPrototypeDao(): AudioPrototypeDao
     abstract fun phraseDao(): PhraseDao
 
     companion object {
@@ -40,6 +43,9 @@ abstract class HibikiDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10,
+                    MIGRATION_10_11,
                 )
                 .addCallback(SeedCallback())
                 .build()
@@ -153,6 +159,51 @@ private val MIGRATION_7_8 = object : Migration(7, 8) {
         db.execSQL("ALTER TABLE phrases ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
         db.execSQL("UPDATE phrases SET updatedAt = createdAt WHERE updatedAt = 0")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_phrases_updatedAt` ON `phrases` (`updatedAt`)")
+    }
+}
+
+private val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE phrases ADD COLUMN arashiSyncState TEXT NOT NULL DEFAULT 'DO_NOT_SYNC'",
+        )
+    }
+}
+
+private val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE subjects ADD COLUMN overlayEnabled INTEGER NOT NULL DEFAULT 1",
+        )
+    }
+}
+
+private val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `audio_prototypes` (
+                `id` TEXT NOT NULL,
+                `phraseId` TEXT NOT NULL,
+                `audioFingerprint` BLOB,
+                `durationMs` INTEGER NOT NULL,
+                `pcmPreview` BLOB,
+                `createdAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`),
+                FOREIGN KEY(`phraseId`) REFERENCES `phrases`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_audio_prototypes_phraseId` ON `audio_prototypes` (`phraseId`)")
+        db.execSQL(
+            """
+            INSERT INTO audio_prototypes (id, phraseId, audioFingerprint, durationMs, pcmPreview, createdAt)
+            SELECT p.id || ':p0', p.id, s.audioFingerprint, s.durationMs, NULL, p.createdAt
+            FROM phrases p
+            INNER JOIN audio_samples s ON s.id = p.audioSampleId
+            WHERE s.audioFingerprint IS NOT NULL
+            """.trimIndent(),
+        )
     }
 }
 

@@ -4,7 +4,7 @@ sealed class AppError(open val userMessage: String) {
     data object OverlayPermissionMissing : AppError("Permesso overlay assente")
     data object MediaProjectionDenied : AppError("Cattura schermo/audio non autorizzata")
     data object AudioNotCapturable : AppError("Audio interno non catturabile")
-    data object EmptyRecording : AppError("Registrazione vuota")
+    data object EmptyRecording : AppError("-")
     data object NoNetwork : AppError("Nessuna connessione")
     data object MissingApiKey : AppError("API key mancante")
     data object ApiAuth : AppError("Autenticazione API non valida")

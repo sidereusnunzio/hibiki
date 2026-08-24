@@ -7,10 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,6 +23,7 @@ import com.hibiki.ui.components.HibikiButton
 import com.hibiki.ui.components.HibikiButtonStyles
 import com.hibiki.ui.components.HibikiSelect
 import com.hibiki.ui.components.HibikiSelectOption
+import com.hibiki.ui.components.HibikiSwitch
 import com.hibiki.ui.components.HibikiToggleRow
 import com.hibiki.ui.components.SquareImagePicker
 import com.hibiki.ui.theme.Cyberpunk
@@ -101,6 +98,7 @@ fun ContextEditScreen(
                                     onJapaneseNameChange = { viewModel.setSubjectJapaneseName(draft.id, it) },
                                     onPromptChange = { viewModel.setSubjectPrompt(draft.id, it) },
                                     onImageCropped = { viewModel.setSubjectImage(draft.id, it) },
+                                    onOverlayEnabledChange = { viewModel.setSubjectOverlayEnabled(draft.id, it) },
                                     onRemove = { viewModel.removeSubject(draft.id) },
                                 )
                             }
@@ -131,14 +129,17 @@ private fun SubjectDraftCard(
     onJapaneseNameChange: (String) -> Unit,
     onPromptChange: (String) -> Unit,
     onImageCropped: (android.graphics.Bitmap) -> Unit,
+    onOverlayEnabledChange: (Boolean) -> Unit,
     onRemove: () -> Unit,
 ) {
     HibikiAccordion(
         title = draft.displayName.ifBlank { "Nuovo personaggio" },
         actions = {
-            IconButton(onClick = onRemove) {
-                Icon(Icons.Filled.Delete, contentDescription = "Elimina", tint = Cyberpunk.NeonMagenta)
-            }
+            HibikiSwitch(
+                checked = draft.overlayEnabled,
+                onCheckedChange = onOverlayEnabledChange,
+                contentDescription = "Visibile nell'overlay",
+            )
         },
     ) {
         SquareImagePicker(
@@ -172,6 +173,12 @@ private fun SubjectDraftCard(
             label = { Text("Prompt aggiuntivo") },
             minLines = 3,
             colors = cyberpunkOutlinedTextFieldColors(containerColor = Cyberpunk.PanelTranslucent),
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        HibikiButton(
+            text = "ELIMINA",
+            onClick = onRemove,
+            style = HibikiButtonStyles.Destructive,
         )
     }
 }

@@ -5,7 +5,9 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.hibiki.data.audio.AacEncoder
 import com.hibiki.data.audio.AudioFileStore
-import com.hibiki.data.audio.PcmClip
+import com.hibiki.data.audio.AudioNormalizer
+import com.hibiki.data.audio.PcmPreviewCodec
+import com.hibiki.data.audio.RecordedClip
 import com.hibiki.data.repository.AudioFingerprintRepository
 import com.hibiki.data.repository.LanguageAnalysisRepository
 import com.hibiki.data.repository.PhraseRepository
@@ -28,6 +30,7 @@ import java.util.UUID
 class CapturePipeline(
     private val appContext: Context,
     private val fingerprintRepository: AudioFingerprintRepository,
+    private val localPhraseMatcher: LocalPhraseMatcher,
     private val phraseRepository: PhraseRepository,
     private val transcriptionRepository: TranscriptionRepository,
     private val languageAnalysisRepository: LanguageAnalysisRepository,
@@ -35,51 +38,27 @@ class CapturePipeline(
     private val audioFileStore: AudioFileStore,
 ) {
     suspend fun process(
-        clip: PcmClip,
+        recorded: RecordedClip,
         context: StudyContext,
         subject: Subject?,
         onStage: suspend (OverlayStage) -> Unit,
     ): CaptureResult {
+        val clip = recorded.trimmed
         onStage(OverlayStage.PROCESSING_AUDIO)
-        // PCM già trimmato in capture: fingerprint + durata prima di qualsiasi AAC.
-        val fingerprint = fingerprintRepository.fingerprint(clip)
         val prefs = settingsRepository.preferences.first()
 
         onStage(OverlayStage.SEARCHING_LOCAL_ARCHIVE)
-        val sampleMatch = fingerprintRepository.findBestMatch(
-            fingerprint = fingerprint,
-            candidates = phraseRepository.samplesForFingerprint(),
-            threshold = prefs.audio.fingerprintThreshold,
-            durationMs = clip.durationMs,
+        val localMatch = localPhraseMatcher.match(
+            recorded = recorded,
+            contextId = context.id,
+            subjectId = subject?.id,
         )
-        if (sampleMatch != null) {
-            val existing = phraseRepository.findAnalysis(
-                audioSampleId = sampleMatch.sample.id,
-                contextId = context.id,
-                subjectId = subject?.id,
+        if (localMatch != null) {
+            return CaptureResult(
+                phrase = localMatch.phrase,
+                origin = PhraseSource.LOCAL_MATCH,
+                similarity = localMatch.alignmentScore,
             )
-            if (existing != null) {
-                return CaptureResult(
-                    phrase = existing,
-                    origin = PhraseSource.LOCAL_MATCH,
-                    similarity = sampleMatch.similarity,
-                )
-            }
-            ensureNetwork()
-            onStage(OverlayStage.ANALYZING)
-            val analysis = languageAnalysisRepository.analyze(
-                sampleMatch.sample.japaneseRaw,
-                context,
-                subject,
-            )
-            val phrase = analysis.toPhrase(
-                sample = sampleMatch.sample,
-                contextId = context.id,
-                subjectId = subject?.id,
-                analysisModel = prefs.api.languageAnalysisModel,
-            )
-            phraseRepository.insertPhrase(phrase)
-            return CaptureResult(phrase = phrase, origin = PhraseSource.API, similarity = sampleMatch.similarity)
         }
 
         ensureNetwork()
@@ -95,13 +74,48 @@ class CapturePipeline(
                 prompt = TranscriptionPromptBuilder.build(context, subject),
                 language = context.expectedLanguage.ifBlank { "ja" },
             )
+
+            val duplicate = phraseRepository.findDuplicateAnalysis(
+                contextId = context.id,
+                subjectId = subject?.id,
+                japaneseRaw = transcription.text,
+            )
+            if (duplicate != null) {
+                phraseRepository.addPrototypeFromRecording(
+                    phraseId = duplicate.id,
+                    fingerprint = primaryFingerprint(recorded),
+                    durationMs = clip.durationMs,
+                    recorded = recorded,
+                )
+                if (phraseRepository.hasCompleteAnalysis(duplicate)) {
+                    return CaptureResult(
+                        phrase = duplicate,
+                        origin = PhraseSource.TEXT_MATCH_AFTER_TRANSCRIPTION,
+                    )
+                }
+                onStage(OverlayStage.ANALYZING)
+                val analysis = languageAnalysisRepository.analyze(transcription.text, context, subject)
+                phraseRepository.updateLinguisticFields(duplicate.id, analysis, japaneseCorrected = null)
+                return CaptureResult(
+                    phrase = duplicate.copy(
+                        kana = analysis.kana,
+                        romaji = analysis.romaji,
+                        literalTranslation = analysis.literalTranslation,
+                        naturalTranslation = analysis.naturalTranslation,
+                        updatedAt = System.currentTimeMillis(),
+                    ),
+                    origin = PhraseSource.TEXT_MATCH_AFTER_TRANSCRIPTION,
+                )
+            }
+
             if (prefs.audio.saveAudio) {
                 persistedPath = audioFileStore.persist(temp)
             }
+            val primaryFingerprint = primaryFingerprint(recorded)
             val sample = AudioSample(
                 id = UUID.randomUUID().toString(),
                 audioPath = persistedPath,
-                audioFingerprint = fingerprint,
+                audioFingerprint = primaryFingerprint,
                 durationMs = clip.durationMs,
                 japaneseRaw = transcription.text,
                 confidence = transcription.confidence,
@@ -113,18 +127,44 @@ class CapturePipeline(
 
             onStage(OverlayStage.ANALYZING)
             val analysis = languageAnalysisRepository.analyze(transcription.text, context, subject)
+            phraseRepository.findDuplicateAnalysis(
+                contextId = context.id,
+                subjectId = subject?.id,
+                japaneseRaw = transcription.text,
+            )?.let { raceDuplicate ->
+                phraseRepository.addPrototypeFromRecording(
+                    phraseId = raceDuplicate.id,
+                    fingerprint = primaryFingerprint,
+                    durationMs = clip.durationMs,
+                    recorded = recorded,
+                )
+                return CaptureResult(
+                    phrase = raceDuplicate,
+                    origin = PhraseSource.TEXT_MATCH_AFTER_TRANSCRIPTION,
+                )
+            }
             val phrase = analysis.toPhrase(
                 sample = sample,
                 contextId = context.id,
                 subjectId = subject?.id,
                 analysisModel = prefs.api.languageAnalysisModel,
             )
-            phraseRepository.insertPhrase(phrase)
+            val pcmPreview = PcmPreviewCodec.encode(AudioNormalizer.toPreviewPcm(recorded.trimmed))
+            phraseRepository.insertPhrase(phrase, primaryFingerprint, pcmPreview)
             return CaptureResult(phrase = phrase, origin = PhraseSource.API)
         } finally {
             audioFileStore.deleteQuietly(temp)
         }
     }
+
+    private fun primaryFingerprint(recorded: RecordedClip): ByteArray =
+        listOf(
+            fingerprintRepository.fingerprint(recorded.trimmed),
+            fingerprintRepository.fingerprint(recorded.raw),
+        )
+            .filter { it.isNotEmpty() }
+            .maxByOrNull { it.size }
+            ?: ByteArray(0)
 
     suspend fun reanalyze(
         japanese: String,

@@ -18,11 +18,19 @@ data class Subject(
     val japaneseName: String,
     val prompt: String = "",
     val imagePath: String? = null,
+    val overlayEnabled: Boolean = true,
 )
 
 enum class PhraseSource {
     API,
     LOCAL_MATCH,
+    TEXT_MATCH_AFTER_TRANSCRIPTION,
+}
+
+enum class ArashiSyncState {
+    DO_NOT_SYNC,
+    PENDING,
+    SYNCED,
 }
 
 data class AudioSample(
@@ -34,6 +42,15 @@ data class AudioSample(
     val confidence: Float?,
     val transcriptionModel: String,
     val transcriptionPromptVersion: Int,
+    val createdAt: Long,
+)
+
+data class AudioPrototype(
+    val id: String,
+    val phraseId: String,
+    val audioFingerprint: ByteArray?,
+    val durationMs: Long,
+    val pcmPreview: ByteArray?,
     val createdAt: Long,
 )
 
@@ -53,6 +70,7 @@ data class Phrase(
     val naturalTranslation: String,
     val confidence: Float?,
     val verified: Boolean,
+    val arashiSyncState: ArashiSyncState = ArashiSyncState.DO_NOT_SYNC,
     val source: PhraseSource,
     val createdAt: Long,
     val updatedAt: Long,
@@ -105,7 +123,7 @@ object BuiltInIds {
 
 object DefaultPrompts {
     const val TRANSCRIPTION_PROMPT_VERSION = 4
-    const val ANALYSIS_PROMPT_VERSION = 4
+    const val ANALYSIS_PROMPT_VERSION = 5
 
     val CORE_TRANSCRIPTION_RULES = """
 Trascrivi esattamente ciò che viene pronunciato in giapponese.
@@ -135,8 +153,8 @@ Ricevi una frase giapponese già trascritta. La frase fornita è immutabile e no
 
 Produci esclusivamente:
 
-- kana: lettura completa in kana
-- romaji: romanizzazione Hepburn modificata con macron per le vocali lunghe (ō, ū)
+- kana: lettura completa in kana, con spazi tra le parole
+- romaji: romanizzazione Hepburn modificata con macron per le vocali lunghe (ō, ū), con spazi tra le parole
 - literalTranslation: glossa in ordine giapponese; particelle e marche grammaticali come [tema], [oggetto], [verso], [interrogativo], [copula], ecc.; NON italiano naturale. Deve differire da naturalTranslation. Esempio: 私は学校へ行く → io [tema] scuola [verso] vado
 - naturalTranslation: traduzione italiana naturale che preservi significato, registro e tono
 

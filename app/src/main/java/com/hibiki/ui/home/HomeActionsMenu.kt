@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
@@ -18,7 +19,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.hibiki.R
 import com.hibiki.ui.components.AppPageAction
 import com.hibiki.ui.theme.Cyberpunk
 
@@ -26,6 +29,7 @@ import com.hibiki.ui.theme.Cyberpunk
 fun HomeActionsMenu(
     onOpenContexts: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAbout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -33,7 +37,7 @@ fun HomeActionsMenu(
         AppPageAction(onClick = { expanded = true }) {
             Icon(
                 imageVector = Icons.Default.MoreVert,
-                contentDescription = "Menu",
+                contentDescription = stringResource(R.string.home_actions),
                 tint = Cyberpunk.TextPrimary,
             )
         }
@@ -50,13 +54,21 @@ fun HomeActionsMenu(
                     onOpenContexts()
                 },
             )
-            HorizontalDivider(color = Cyberpunk.GridLine)
             HomeActionMenuItem(
                 label = "Impostazioni",
                 icon = Icons.Filled.Settings,
                 onClick = {
                     expanded = false
                     onOpenSettings()
+                },
+            )
+            HorizontalDivider(color = Cyberpunk.GridLine)
+            HomeActionMenuItem(
+                label = stringResource(R.string.home_about),
+                icon = Icons.Filled.Info,
+                onClick = {
+                    expanded = false
+                    onOpenAbout()
                 },
             )
         }

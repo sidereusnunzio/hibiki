@@ -49,10 +49,13 @@ class OverlayController(
         val contexts = contextRepository.observeContexts().first()
         val selectedContext = contexts.find { it.id == prefs.lastContextId } ?: contexts.firstOrNull()
         val subjects = selectedContext?.takeIf { it.hasSubjects }
-            ?.let { contextRepository.getSubjects(it.id) }
+            ?.let { contextRepository.getOverlaySubjects(it.id) }
             .orEmpty()
         val lastSubjectId = selectedContext?.id?.let { prefs.lastSubjectIds[it] }
-        val selectedSubject = subjects.find { it.id == lastSubjectId } ?: subjects.firstOrNull()
+        val selectedSubject = lastSubjectId?.let { id -> subjects.find { it.id == id } }
+        if (selectedContext != null && lastSubjectId != null && selectedSubject == null) {
+            settingsRepository.setLastSubject(selectedContext.id, null)
+        }
         _state.update {
             it.copy(
                 collapsed = false,
@@ -89,12 +92,18 @@ class OverlayController(
                 .map { it.selectedContext?.id to (it.selectedContext?.hasSubjects == true) }
                 .distinctUntilChanged()
                 .flatMapLatest { (id, hasSubjects) ->
-                    if (id != null && hasSubjects) contextRepository.observeSubjects(id)
+                    if (id != null && hasSubjects) contextRepository.observeOverlaySubjects(id)
                     else flowOf(emptyList())
                 }
                 .collect { subjects ->
                     val current = _state.value.selectedSubject
-                    val selected = subjects.find { it.id == current?.id } ?: subjects.firstOrNull()
+                    val selected = current?.let { subject -> subjects.find { it.id == subject.id } }
+                    if (selected == null && current != null) {
+                        val contextId = _state.value.selectedContext?.id
+                        if (contextId != null) {
+                            scope.launch { settingsRepository.setLastSubject(contextId, null) }
+                        }
+                    }
                     _state.update { it.copy(subjects = subjects, selectedSubject = selected) }
                 }
         }
@@ -115,10 +124,15 @@ class OverlayController(
 
     fun selectContext(context: StudyContext, scope: CoroutineScope) {
         scope.launch {
-            val subjects = if (context.hasSubjects) contextRepository.getSubjects(context.id) else emptyList()
+            val subjects = if (context.hasSubjects) {
+                contextRepository.getOverlaySubjects(context.id)
+            } else {
+                emptyList()
+            }
             val prefs = settingsRepository.preferences.first()
-            val selectedSubject = subjects.find { it.id == prefs.lastSubjectIds[context.id] }
-                ?: subjects.firstOrNull()
+            val selectedSubject = prefs.lastSubjectIds[context.id]?.let { id ->
+                subjects.find { it.id == id }
+            }
             settingsRepository.setLastContext(context.id)
             settingsRepository.setLastSubject(context.id, selectedSubject?.id)
             _state.update {
@@ -131,9 +145,10 @@ class OverlayController(
         }
     }
 
-    fun selectSubject(subject: Subject, scope: CoroutineScope) {
+    fun selectSubject(subject: Subject?, scope: CoroutineScope) {
+        val contextId = _state.value.selectedContext?.id ?: return
         _state.update { it.copy(selectedSubject = subject) }
-        scope.launch { settingsRepository.setLastSubject(subject.contextId, subject.id) }
+        scope.launch { settingsRepository.setLastSubject(contextId, subject?.id) }
     }
 
     fun setBufferEnabled(enabled: Boolean, scope: CoroutineScope) {
@@ -182,6 +197,7 @@ class OverlayController(
                         stage = OverlayStage.LISTENING,
                         errorMessage = null,
                         result = null,
+                        phrasePanelVisible = false,
                         remainingSeconds = prefs.audio.maxDurationSeconds,
                     )
                 }
@@ -193,13 +209,13 @@ class OverlayController(
                         remaining--
                     }
                 }
-                val clip = audioCaptureRepository.recordClip(
+                val recorded = audioCaptureRepository.recordClip(
                     maxDurationMs = prefs.audio.maxDurationSeconds * 1_000L,
                     trimSilence = prefs.audio.trimSilence,
                 )
                 tickerJob?.cancel()
                 val result = capturePipeline.process(
-                    clip = clip,
+                    recorded = recorded,
                     context = context,
                     subject = if (context.hasSubjects) _state.value.selectedSubject else null,
                     onStage = { stage -> _state.update { it.copy(stage = stage, remainingSeconds = null) } },
@@ -208,6 +224,7 @@ class OverlayController(
                     it.copy(
                         stage = OverlayStage.RESULT,
                         result = result,
+                        phrasePanelVisible = true,
                         remainingSeconds = null,
                     )
                 }
@@ -238,5 +255,9 @@ class OverlayController(
                 remainingSeconds = null,
             )
         }
+    }
+
+    fun setPhrasePanelVisible(visible: Boolean) {
+        _state.update { it.copy(phrasePanelVisible = visible) }
     }
 }

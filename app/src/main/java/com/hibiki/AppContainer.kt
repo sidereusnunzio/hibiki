@@ -5,6 +5,7 @@ import com.hibiki.data.api.openai.OpenAiProvider
 import com.hibiki.data.audio.AudioFileStore
 import com.hibiki.data.audio.PhraseAudioPlayer
 import com.hibiki.data.arashi.ArashiExportService
+import com.hibiki.data.arashi.ArashiSyncSession
 import com.hibiki.data.backup.BackupExportService
 import com.hibiki.data.backup.BackupImportService
 import com.hibiki.data.crypto.SecureApiKeyStore
@@ -21,6 +22,7 @@ import com.hibiki.data.repository.PhraseRepository
 import com.hibiki.data.repository.SettingsRepository
 import com.hibiki.data.repository.TranscriptionRepository
 import com.hibiki.domain.CapturePipeline
+import com.hibiki.domain.LocalPhraseMatcher
 import com.hibiki.overlay.OverlayController
 import com.hibiki.ui.archive.ArchiveBrowseSession
 
@@ -42,6 +44,10 @@ class AppContainer(context: Context) {
     val phraseRepository = PhraseRepository(databaseProvider, audioFileStore)
     val audioCaptureRepository = AudioCaptureRepository()
     val audioFingerprintRepository = AudioFingerprintRepository()
+    val localPhraseMatcher = LocalPhraseMatcher(
+        fingerprintRepository = audioFingerprintRepository,
+        phraseRepository = phraseRepository,
+    )
     val phraseAudioPlayer = PhraseAudioPlayer(appContext)
     val backupRepository = BackupRepository(
         exportService = BackupExportService(appContext, databaseProvider, mediaDirectories),
@@ -55,6 +61,11 @@ class AppContainer(context: Context) {
     val arashiExportService = ArashiExportService(
         phraseRepository = phraseRepository,
         databaseProvider = databaseProvider,
+    )
+    val arashiSyncSession = ArashiSyncSession(
+        arashiExportService = arashiExportService,
+        phraseRepository = phraseRepository,
+        settingsRepository = settingsRepository,
     )
     val archiveBrowseSession = ArchiveBrowseSession()
 
@@ -73,6 +84,7 @@ class AppContainer(context: Context) {
     val capturePipeline = CapturePipeline(
         appContext = appContext,
         fingerprintRepository = audioFingerprintRepository,
+        localPhraseMatcher = localPhraseMatcher,
         phraseRepository = phraseRepository,
         transcriptionRepository = transcriptionRepository,
         languageAnalysisRepository = languageAnalysisRepository,

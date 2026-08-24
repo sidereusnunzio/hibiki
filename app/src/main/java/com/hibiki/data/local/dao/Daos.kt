@@ -5,6 +5,8 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
+import com.hibiki.data.local.entity.AudioPrototypeEntity
 import com.hibiki.data.local.entity.AudioSampleEntity
 import com.hibiki.data.local.entity.ContextEntity
 import com.hibiki.data.local.entity.PhraseEntity
@@ -62,7 +64,7 @@ interface SubjectDao {
     @Query("SELECT * FROM subjects WHERE id = :id")
     suspend fun getById(id: String): SubjectEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(entity: SubjectEntity)
 
     @Query("DELETE FROM subjects WHERE id = :id")
@@ -73,6 +75,21 @@ interface SubjectDao {
 
     @Query("UPDATE subjects SET imagePath = :imagePath WHERE id = :id")
     suspend fun updateImagePath(id: String, imagePath: String)
+}
+
+@Dao
+interface AudioPrototypeDao {
+    @Query("SELECT * FROM audio_prototypes WHERE phraseId = :phraseId ORDER BY createdAt ASC")
+    suspend fun getByPhrase(phraseId: String): List<AudioPrototypeEntity>
+
+    @Query("SELECT COUNT(*) FROM audio_prototypes WHERE phraseId = :phraseId")
+    suspend fun countByPhrase(phraseId: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(entity: AudioPrototypeEntity)
+
+    @Query("DELETE FROM audio_prototypes WHERE id = :id")
+    suspend fun deleteById(id: String)
 }
 
 @Dao
@@ -128,11 +145,27 @@ interface PhraseDao {
         subjectId: String?,
     ): PhraseEntity?
 
+    @Query(
+        """
+        SELECT * FROM phrases
+        WHERE audioSampleId = :audioSampleId
+          AND contextId = :contextId
+        LIMIT 1
+        """,
+    )
+    suspend fun findAnalysisInContext(
+        audioSampleId: String,
+        contextId: String,
+    ): PhraseEntity?
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(entity: PhraseEntity)
 
     @Update
     suspend fun update(entity: PhraseEntity)
+
+    @Query("UPDATE phrases SET arashiSyncState = :state WHERE id IN (:ids)")
+    suspend fun setArashiSyncState(ids: List<String>, state: String)
 
     @Query("DELETE FROM phrases WHERE id = :id")
     suspend fun deleteById(id: String)

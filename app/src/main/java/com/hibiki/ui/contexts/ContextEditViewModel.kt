@@ -21,6 +21,7 @@ data class SubjectDraft(
     val japaneseName: String = "",
     val prompt: String = "",
     val image: ImageEdit = ImageEdit(),
+    val overlayEnabled: Boolean = true,
 )
 
 data class ContextEditState(
@@ -102,6 +103,9 @@ class ContextEditViewModel(
     fun setSubjectPrompt(id: String, value: String) =
         updateSubject(id) { copy(prompt = value) }
 
+    fun setSubjectOverlayEnabled(id: String, value: Boolean) =
+        updateSubject(id) { copy(overlayEnabled = value) }
+
     fun save(onDone: () -> Unit) {
         viewModelScope.launch {
             val current = _state.value
@@ -160,6 +164,7 @@ class ContextEditViewModel(
                     japaneseName = draft.japaneseName.trim(),
                     prompt = draft.prompt.trim(),
                     imagePath = draft.image.persist(container.imageFileStore),
+                    overlayEnabled = draft.overlayEnabled,
                 ),
             )
         }
@@ -183,6 +188,7 @@ class ContextEditViewModel(
                     japaneseName = subject.japaneseName,
                     prompt = subject.prompt,
                     image = ImageEdit(previewPath = subject.imagePath, originalPath = subject.imagePath),
+                    overlayEnabled = subject.overlayEnabled,
                 )
             },
         )

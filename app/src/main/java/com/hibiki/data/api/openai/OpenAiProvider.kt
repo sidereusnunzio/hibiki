@@ -173,8 +173,11 @@ class OpenAiProvider(
         fun linguisticSchema(): JsonObject = buildJsonObject {
             put("type", "object")
             putJsonObject("properties") {
-                stringProperty("kana", "Lettura completa della frase in kana")
-                stringProperty("romaji", "Romanizzazione Hepburn modificata con macron per le vocali lunghe")
+                stringProperty("kana", "Lettura completa della frase in kana, con spazi tra le parole")
+                stringProperty(
+                    "romaji",
+                    "Romanizzazione Hepburn modificata con macron per le vocali lunghe, con spazi tra le parole",
+                )
                 stringProperty(
                     "literalTranslation",
                     "Glossa in ordine giapponese; particelle come [tema], [oggetto], [verso]; NON italiano naturale",

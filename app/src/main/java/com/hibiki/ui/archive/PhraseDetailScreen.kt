@@ -1,5 +1,8 @@
 package com.hibiki.ui.archive
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
@@ -30,9 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hibiki.data.arashi.ArashiExportContract
 import com.hibiki.ui.components.AppPage
 import com.hibiki.ui.components.AppPageBackAction
 import com.hibiki.ui.components.DetailSection
@@ -65,6 +70,30 @@ fun PhraseDetailScreen(
     val detailCache by viewModel.detailCache.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showInspect by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    val arashiLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        viewModel.onArashiActivityResult(
+            context = context,
+            resultCode = result.resultCode,
+            resultJson = result.data?.getStringExtra(ArashiExportContract.EXTRA_IMPORT_RESULT),
+            errorMessage = result.data?.getStringExtra(ArashiExportContract.EXTRA_IMPORT_ERROR),
+        )
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.arashiLaunch.collect { intent ->
+            runCatching { arashiLauncher.launch(intent) }
+                .onFailure { viewModel.onArashiLaunchFailed(context, it) }
+        }
+    }
+
+    LaunchedEffect(state?.error) {
+        val message = state?.error ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+    }
 
     var browsePagerEnabled by remember { mutableStateOf(false) }
     LaunchedEffect(phraseId) {
@@ -147,6 +176,7 @@ fun PhraseDetailScreen(
                     onPlay = viewModel::play,
                     onInspect = { showInspect = true },
                     onAdvancedEdit = { onAdvancedEdit(pagePhraseId) },
+                    onSyncWithArashi = { viewModel.syncWithArashi(context) },
                     onRandom = { viewModel.openRandomPhrase(onRandomPhrase) },
                 )
             }
@@ -170,6 +200,7 @@ private fun PhraseDetailPagerPage(
     onPlay: () -> Unit,
     onInspect: () -> Unit,
     onAdvancedEdit: () -> Unit,
+    onSyncWithArashi: () -> Unit,
     onRandom: () -> Unit,
 ) {
     if (state == null || !composeContent) {
@@ -193,6 +224,7 @@ private fun PhraseDetailPagerPage(
                 onPlay = onPlay,
                 onInspect = if (isActivePage) onInspect else ({}),
                 onAdvancedEdit = if (isActivePage) onAdvancedEdit else ({}),
+                onSyncWithArashi = if (isActivePage) onSyncWithArashi else ({}),
             )
         }
     }

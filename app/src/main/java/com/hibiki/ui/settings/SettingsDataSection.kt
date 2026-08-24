@@ -22,14 +22,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hibiki.data.arashi.ArashiExportContract
-import com.hibiki.data.arashi.model.ArashiExportType
 import com.hibiki.data.backup.BackupConstants
 import com.hibiki.domain.model.LastArashiExport
 import com.hibiki.ui.components.DetailSection
 import com.hibiki.ui.components.HibikiButton
 import com.hibiki.ui.components.HibikiButtonStyles
 import com.hibiki.ui.components.HibikiConfirmDialog
-import com.hibiki.ui.components.HibikiDialog
 import com.hibiki.ui.theme.Cyberpunk
 import java.time.Instant
 import java.time.ZoneId
@@ -43,7 +41,6 @@ fun SettingsDataSection(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showImportConfirm by remember { mutableStateOf(false) }
-    var showArashiChoice by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip"),
@@ -98,23 +95,6 @@ fun SettingsDataSection(
             },
             onDismiss = { showImportConfirm = false },
             confirmStyle = HibikiButtonStyles.Destructive,
-        )
-    }
-
-    if (showArashiChoice) {
-        ArashiExportChoiceDialog(
-            hasPreviousExport = uiState.lastArashiExport != null,
-            onPartial = {
-                showArashiChoice = false
-                viewModel.clearArashiExportState()
-                viewModel.startArashiExport(context, ArashiExportType.PARTIAL)
-            },
-            onFull = {
-                showArashiChoice = false
-                viewModel.clearArashiExportState()
-                viewModel.startArashiExport(context, ArashiExportType.FULL)
-            },
-            onDismiss = { showArashiChoice = false },
         )
     }
 
@@ -185,12 +165,21 @@ fun SettingsDataSection(
 
         HibikiButton(
             modifier = Modifier.padding(top = 16.dp),
-            text = "ESPORTA IN ARASHI",
-            onClick = { showArashiChoice = true },
+            text = "SINCRONIZZA CON ARASHI",
+            onClick = {
+                viewModel.clearArashiExportState()
+                viewModel.startArashiExport(context)
+            },
             enabled = uiState.backupState !is BackupState.Exporting &&
                 uiState.backupState !is BackupState.Importing &&
                 uiState.arashiExportState !is ArashiExportState.Preparing,
             style = HibikiButtonStyles.Violet,
+        )
+        Text(
+            text = "Invia ad Arashi tutte le frasi contrassegnate come «Da sincronizzare».",
+            style = MaterialTheme.typography.bodySmall,
+            color = Cyberpunk.TextMuted,
+            modifier = Modifier.padding(top = 8.dp),
         )
         Text(
             text = lastArashiExportLabel(uiState.lastArashiExport),
@@ -200,7 +189,7 @@ fun SettingsDataSection(
         )
         when (val arashiState = uiState.arashiExportState) {
             ArashiExportState.Preparing -> SettingsStatusLine(
-                text = "Preparazione export verso Arashi…",
+                text = "Preparazione sincronizzazione con Arashi…",
                 color = Cyberpunk.NeonCyan,
             )
             is ArashiExportState.Success -> SettingsStatusLine(
@@ -216,56 +205,10 @@ fun SettingsDataSection(
     }
 }
 
-@Composable
-private fun ArashiExportChoiceDialog(
-    hasPreviousExport: Boolean,
-    onPartial: () -> Unit,
-    onFull: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    HibikiDialog(onDismissRequest = onDismiss) {
-        Text(
-            text = "Esporta in Arashi",
-            style = MaterialTheme.typography.titleMedium,
-            color = Cyberpunk.TextPrimary,
-        )
-        Text(
-            text = if (hasPreviousExport) {
-                "Scegli se inviare solo le frasi nuove o modificate, oppure tutte."
-            } else {
-                "Non esiste un export precedente: verrà inviato l'elenco completo."
-            },
-            modifier = Modifier.padding(top = 12.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = Cyberpunk.TextMuted,
-        )
-        Column(
-            modifier = Modifier.padding(top = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            HibikiButton(
-                text = if (hasPreviousExport) "EXPORT PARZIALE" else "TUTTE LE FRASI",
-                onClick = onPartial,
-                style = HibikiButtonStyles.Primary,
-            )
-            HibikiButton(
-                text = "EXPORT TOTALE",
-                onClick = onFull,
-                style = HibikiButtonStyles.Secondary,
-            )
-            HibikiButton(
-                text = "ANNULLA",
-                onClick = onDismiss,
-                style = HibikiButtonStyles.Cancel,
-            )
-        }
-    }
-}
-
 private fun lastArashiExportLabel(last: LastArashiExport?): String {
-    if (last == null) return "Mai esportato in Arashi"
+    if (last == null) return "Mai sincronizzato con Arashi"
     val formatted = LAST_EXPORT_FORMAT.format(Instant.ofEpochMilli(last.exportedAtEpochMs))
-    return "Ultimo export riuscito:\n$formatted\n${last.phraseCount} frasi inviate"
+    return "Ultima sincronizzazione riuscita:\n$formatted\n${last.phraseCount} frasi inviate"
 }
 
 private val LAST_EXPORT_FORMAT: DateTimeFormatter =

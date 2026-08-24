@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hibiki.domain.model.ArashiSyncState
 import com.hibiki.ui.components.AppPage
 import com.hibiki.ui.components.AppPageBackAction
 import com.hibiki.ui.components.DetailSection
@@ -116,6 +117,21 @@ fun PhraseAdvancedEditScreen(
                     value = current.natural,
                     onChange = viewModel::updateNatural,
                     singleLine = false,
+                )
+            }
+
+            DetailSection(title = "Sincronizzazione Arashi") {
+                val syncLabels = listOf("Non sincronizzare", "Da sincronizzare", "Sincronizzata")
+                val syncStates = listOf(
+                    ArashiSyncState.DO_NOT_SYNC,
+                    ArashiSyncState.PENDING,
+                    ArashiSyncState.SYNCED,
+                )
+                val selectedSyncIndex = syncStates.indexOf(current.arashiSyncState).coerceAtLeast(0)
+                SegmentedTabs(
+                    labels = syncLabels,
+                    selectedIndex = selectedSyncIndex,
+                    onSelect = { index -> viewModel.setArashiSyncState(syncStates[index]) },
                 )
             }
 

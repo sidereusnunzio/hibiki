@@ -1,6 +1,6 @@
 package com.hibiki.data.arashi
 
-import com.hibiki.data.arashi.model.ArashiExportType
+import com.hibiki.domain.model.ArashiSyncState
 import com.hibiki.domain.model.Phrase
 import com.hibiki.domain.model.PhraseSource
 import java.time.Instant
@@ -10,40 +10,14 @@ import org.junit.Test
 
 class ArashiExportSelectorTest {
     @Test
-    fun fullExportSelectsEveryPhrase() {
-        val phrases = listOf(phrase("a", updatedAt = 10), phrase("b", updatedAt = 50))
-        val selected = ArashiExportSelector.select(phrases, ArashiExportType.FULL, lastSuccessfulExportAtMs = 20)
-        assertEquals(listOf("a", "b"), selected.map { it.id })
-    }
-
-    @Test
-    fun partialExportSelectsOnlyNewerThanLastSuccess() {
+    fun selectPendingReturnsOnlyMarkedPhrases() {
         val phrases = listOf(
-            phrase("old", updatedAt = 10),
-            phrase("equal", updatedAt = 20),
-            phrase("new", updatedAt = 21),
+            phrase("skip", ArashiSyncState.DO_NOT_SYNC),
+            phrase("ready", ArashiSyncState.PENDING),
+            phrase("done", ArashiSyncState.SYNCED),
         )
-        val selected = ArashiExportSelector.select(
-            phrases,
-            ArashiExportType.PARTIAL,
-            lastSuccessfulExportAtMs = 20,
-        )
-        assertEquals(listOf("new"), selected.map { it.id })
-    }
-
-    @Test
-    fun partialWithoutPreviousExportSendsEverything() {
-        val phrases = listOf(phrase("a", updatedAt = 1), phrase("b", updatedAt = 2))
-        val selected = ArashiExportSelector.select(
-            phrases,
-            ArashiExportType.PARTIAL,
-            lastSuccessfulExportAtMs = null,
-        )
-        assertEquals(listOf("a", "b"), selected.map { it.id })
-        assertEquals(
-            ArashiExportType.FULL,
-            ArashiExportSelector.effectiveType(ArashiExportType.PARTIAL, lastSuccessfulExportAtMs = null),
-        )
+        val selected = ArashiExportSelector.selectPending(phrases)
+        assertEquals(listOf("ready"), selected.map { it.id })
     }
 }
 
@@ -76,7 +50,7 @@ class ArashiExportResultInterpreterTest {
             errorMessage = null,
             expectedExportId = "exp-1",
         )
-        assertTrue(outcome is ArashiExportOutcome.Success)
+        assertTrue(outcome is com.hibiki.data.arashi.ArashiExportOutcome.Success)
     }
 
     @Test
@@ -87,7 +61,7 @@ class ArashiExportResultInterpreterTest {
             errorMessage = null,
             expectedExportId = "exp-1",
         )
-        assertEquals(ArashiExportOutcome.Cancelled, outcome)
+        assertEquals(com.hibiki.data.arashi.ArashiExportOutcome.Cancelled, outcome)
     }
 
     @Test
@@ -98,7 +72,7 @@ class ArashiExportResultInterpreterTest {
             errorMessage = "schemaVersion non supportata",
             expectedExportId = "exp-1",
         )
-        assertTrue(outcome is ArashiExportOutcome.Invalid)
+        assertTrue(outcome is com.hibiki.data.arashi.ArashiExportOutcome.Invalid)
     }
 
     @Test
@@ -119,7 +93,7 @@ class ArashiExportResultInterpreterTest {
             errorMessage = null,
             expectedExportId = "exp-1",
         )
-        val invalid = outcome as ArashiExportOutcome.Invalid
+        val invalid = outcome as com.hibiki.data.arashi.ArashiExportOutcome.Invalid
         assertTrue(invalid.message.contains("exportId"))
     }
 
@@ -131,11 +105,11 @@ class ArashiExportResultInterpreterTest {
             errorMessage = null,
             expectedExportId = "exp-1",
         )
-        assertTrue(outcome is ArashiExportOutcome.Invalid)
+        assertTrue(outcome is com.hibiki.data.arashi.ArashiExportOutcome.Invalid)
     }
 }
 
-private fun phrase(id: String, updatedAt: Long) = Phrase(
+private fun phrase(id: String, arashiSyncState: ArashiSyncState) = Phrase(
     id = id,
     audioSampleId = "sample-$id",
     contextId = "generale",
@@ -151,9 +125,10 @@ private fun phrase(id: String, updatedAt: Long) = Phrase(
     naturalTranslation = "test",
     confidence = null,
     verified = false,
+    arashiSyncState = arashiSyncState,
     source = PhraseSource.API,
-    createdAt = updatedAt,
-    updatedAt = updatedAt,
+    createdAt = 1,
+    updatedAt = 1,
     transcriptionModel = "gpt-transcribe",
     analysisModel = "gpt-4o-mini",
     transcriptionPromptVersion = 1,

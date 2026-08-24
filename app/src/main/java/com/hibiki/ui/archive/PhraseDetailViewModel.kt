@@ -1,16 +1,20 @@
 package com.hibiki.ui.archive
 
 import android.app.Application
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.hibiki.container
+import com.hibiki.data.arashi.ArashiActivityResult
+import com.hibiki.data.arashi.ArashiSyncOutcome
 import com.hibiki.domain.model.AppError
 import com.hibiki.domain.model.Phrase
 import com.hibiki.domain.model.Subject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +43,7 @@ data class PhraseDetailUi(
     val saving: Boolean = false,
     val regenerating: Boolean = false,
     val error: String? = null,
+    val syncingWithArashi: Boolean = false,
     val createdLabel: String,
 )
 
@@ -57,6 +62,8 @@ class PhraseDetailViewModel(
 
     val browsePhraseIds: StateFlow<List<String>> = container.archiveBrowseSession.phraseIds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val arashiLaunch: SharedFlow<android.content.Intent> = container.arashiSyncSession.launch
 
     private val _detailCache = MutableStateFlow<Map<String, PhraseDetailUi>>(emptyMap())
     val detailCache: StateFlow<Map<String, PhraseDetailUi>> = _detailCache.asStateFlow()
@@ -110,6 +117,68 @@ class PhraseDetailViewModel(
 
     fun play() {
         state.value?.phrase?.audioPath?.let { container.phraseAudioPlayer.play(it) }
+    }
+
+    fun syncWithArashi(context: android.content.Context) {
+        val phraseId = _currentPhraseId.value
+        viewModelScope.launch {
+            updateCurrent { it.copy(syncingWithArashi = true, error = null) }
+            container.arashiSyncSession.clearPending(context)
+            when (val immediate = container.arashiSyncSession.startSinglePhraseExport(context, phraseId)) {
+                null -> Unit
+                else -> {
+                    updateCurrent { it.copy(syncingWithArashi = false) }
+                    applyArashiOutcome(immediate)
+                }
+            }
+        }
+    }
+
+    fun onArashiActivityResult(
+        context: android.content.Context,
+        resultCode: Int,
+        resultJson: String?,
+        errorMessage: String?,
+    ) {
+        when (
+            val result = container.arashiSyncSession.onActivityResult(
+                context = context,
+                resultCode = resultCode,
+                resultJson = resultJson,
+                errorMessage = errorMessage,
+            )
+        ) {
+            is ArashiActivityResult.Done -> {
+                updateCurrent { it.copy(syncingWithArashi = false) }
+                applyArashiOutcome(result.outcome)
+            }
+            is ArashiActivityResult.SuccessPending -> {
+                viewModelScope.launch {
+                    val outcome = container.arashiSyncSession.finalizeSuccess(result.pending, result.result)
+                    updateCurrent { it.copy(syncingWithArashi = false) }
+                    applyArashiOutcome(outcome)
+                }
+            }
+        }
+    }
+
+    fun onArashiLaunchFailed(context: android.content.Context, error: Throwable) {
+        updateCurrent { it.copy(syncingWithArashi = false) }
+        applyArashiOutcome(container.arashiSyncSession.onLaunchFailed(context, error))
+    }
+
+    private fun applyArashiOutcome(outcome: ArashiSyncOutcome) {
+        when (outcome) {
+            ArashiSyncOutcome.Cancelled -> Unit
+            is ArashiSyncOutcome.Error -> updateCurrent { it.copy(error = outcome.message) }
+            is ArashiSyncOutcome.Success -> {
+                Toast.makeText(
+                    getApplication(),
+                    "Frase sincronizzata con Arashi",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
     }
 
     fun setVerified(verified: Boolean) {

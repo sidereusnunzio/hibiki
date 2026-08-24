@@ -36,6 +36,7 @@ import com.hibiki.ui.contexts.ContextEditScreen
 import com.hibiki.ui.contexts.ContextsScreen
 import com.hibiki.ui.contexts.SubjectEditScreen
 import com.hibiki.ui.contexts.SubjectsScreen
+import com.hibiki.ui.home.AboutScreen
 import com.hibiki.ui.home.HomeScreen
 import com.hibiki.ui.settings.SettingsScreen
 import com.hibiki.ui.theme.Cyberpunk
@@ -184,10 +185,16 @@ private fun NavGraphBuilder.homeGraph(
                 onOpenSettings = {
                     navController.navigate(Route.HomeSettings.path) { launchSingleTop = true }
                 },
+                onOpenAbout = {
+                    navController.navigate(Route.HomeAbout.path) { launchSingleTop = true }
+                },
             )
         }
         composable(Route.HomeSettings.path) {
             SettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Route.HomeAbout.path) {
+            AboutScreen(onBack = { navController.popBackStack() })
         }
         composable(Route.Contexts.path) {
             ContextsScreen(

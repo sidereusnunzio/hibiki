@@ -4,10 +4,18 @@ import com.hibiki.data.audio.AudioFileStore
 import com.hibiki.data.local.HibikiDatabaseProvider
 import com.hibiki.data.local.toEntity
 import com.hibiki.data.local.toModel
+import com.hibiki.domain.JapaneseTextNormalizer
+import com.hibiki.data.audio.AudioNormalizer
+import com.hibiki.data.audio.PcmPreviewCodec
+import com.hibiki.data.audio.RecordedClip
+import com.hibiki.domain.model.AudioMatchConfig
+import com.hibiki.domain.model.AudioPrototype
 import com.hibiki.domain.model.ArchiveFilters
+import com.hibiki.domain.model.ArashiSyncState
 import com.hibiki.domain.model.AudioSample
 import com.hibiki.domain.model.LinguisticAnalysis
 import com.hibiki.domain.model.Phrase
+import java.util.UUID
 import com.hibiki.domain.model.PhraseListItem
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -21,6 +29,7 @@ class PhraseRepository(
 ) {
     private val phraseDao get() = databaseProvider.getDatabase().phraseDao()
     private val sampleDao get() = databaseProvider.getDatabase().audioSampleDao()
+    private val prototypeDao get() = databaseProvider.getDatabase().audioPrototypeDao()
     private val contextDao get() = databaseProvider.getDatabase().contextDao()
     private val subjectDao get() = databaseProvider.getDatabase().subjectDao()
 
@@ -97,12 +106,86 @@ class PhraseRepository(
         return row.toModel(sample)
     }
 
-    suspend fun insertSample(sample: AudioSample) {
-        sampleDao.insert(sample.toEntity())
+    suspend fun findDuplicateAnalysis(contextId: String, subjectId: String?, japaneseRaw: String): Phrase? {
+        if (JapaneseTextNormalizer.normalize(japaneseRaw).isEmpty()) return null
+        val sampleById = sampleDao.getAll().associateBy { it.id }
+        return phraseDao.getAll()
+            .asSequence()
+            .filter { row -> sameSubject(row.contextId, row.subjectId, contextId, subjectId) }
+            .mapNotNull { row -> sampleById[row.audioSampleId]?.let { row.toModel(it) } }
+            .firstOrNull { phrase ->
+                JapaneseTextNormalizer.areEquivalent(japaneseRaw, phrase.japaneseRaw) ||
+                    phrase.japaneseCorrected?.let { JapaneseTextNormalizer.areEquivalent(japaneseRaw, it) } == true
+            }
     }
 
-    suspend fun insertPhrase(phrase: Phrase) {
+    /** Target di matching: una entry per prototipo acustico di ogni Phrase nel contesto. */
+    suspend fun getMatchTargets(contextId: String, subjectId: String?): List<PhraseMatchTarget> {
+        val sampleById = sampleDao.getAll().associateBy { it.id }
+        val phrases = phraseDao.getAll()
+            .filter { row -> matchesContextAndSubject(row.contextId, row.subjectId, contextId, subjectId) }
+            .mapNotNull { row -> sampleById[row.audioSampleId]?.let { row.toModel(it) } }
+        return phrases.flatMap { phrase ->
+            prototypeDao.getByPhrase(phrase.id).map { prototype ->
+                PhraseMatchTarget(
+                    phrase = phrase,
+                    prototypeId = prototype.id,
+                    fingerprint = prototype.audioFingerprint,
+                    durationMs = prototype.durationMs,
+                    pcmPreview = prototype.pcmPreview,
+                    audioPath = phrase.audioPath,
+                )
+            }
+        }
+    }
+
+    suspend fun addPrototypeFromRecording(
+        phraseId: String,
+        fingerprint: ByteArray,
+        durationMs: Long,
+        recorded: RecordedClip,
+    ) {
+        if (fingerprint.isEmpty()) return
+        val pcmPreview = PcmPreviewCodec.encode(AudioNormalizer.toPreviewPcm(recorded.trimmed))
+        prototypeDao.insert(
+            AudioPrototype(
+                id = UUID.randomUUID().toString(),
+                phraseId = phraseId,
+                audioFingerprint = fingerprint,
+                durationMs = durationMs,
+                pcmPreview = pcmPreview,
+                createdAt = System.currentTimeMillis(),
+            ).toEntity(),
+        )
+        trimPrototypes(phraseId)
+    }
+
+    fun hasCompleteAnalysis(phrase: Phrase): Boolean =
+        phrase.kana.isNotBlank() &&
+            phrase.romaji.isNotBlank() &&
+            phrase.naturalTranslation.isNotBlank()
+
+    private suspend fun trimPrototypes(phraseId: String) {
+        val prototypes = prototypeDao.getByPhrase(phraseId).sortedBy { it.createdAt }
+        val excess = prototypes.size - AudioMatchConfig.MAX_PROTOTYPES_PER_PHRASE
+        if (excess <= 0) return
+        prototypes.take(excess).forEach { prototypeDao.deleteById(it.id) }
+    }
+
+    suspend fun insertPhrase(phrase: Phrase, initialFingerprint: ByteArray?, pcmPreview: ByteArray?) {
         phraseDao.insert(phrase.toEntity())
+        if (initialFingerprint != null && !initialFingerprint.isEmpty()) {
+            prototypeDao.insert(
+                AudioPrototype(
+                    id = "${phrase.id}:p0",
+                    phraseId = phrase.id,
+                    audioFingerprint = initialFingerprint,
+                    durationMs = phrase.durationMs,
+                    pcmPreview = pcmPreview,
+                    createdAt = phrase.createdAt,
+                ).toEntity(),
+            )
+        }
     }
 
     suspend fun updateLinguisticFields(id: String, analysis: LinguisticAnalysis, japaneseCorrected: String?) {
@@ -130,6 +213,11 @@ class PhraseRepository(
         phraseDao.update(current.copy(verified = verified, updatedAt = System.currentTimeMillis()))
     }
 
+    suspend fun setArashiSyncState(ids: Collection<String>, state: ArashiSyncState) {
+        if (ids.isEmpty()) return
+        phraseDao.setArashiSyncState(ids.toList(), state.name)
+    }
+
     suspend fun delete(id: String) {
         val current = phraseDao.getById(id) ?: return
         val sampleId = current.audioSampleId
@@ -139,6 +227,29 @@ class PhraseRepository(
             sample?.audioPath?.let { audioFileStore.delete(it) }
             sampleDao.deleteById(sampleId)
         }
+    }
+
+    private fun sameSubject(
+        storedContextId: String,
+        storedSubjectId: String?,
+        contextId: String,
+        subjectId: String?,
+    ): Boolean = matchesContextAndSubject(storedContextId, storedSubjectId, contextId, subjectId)
+
+    /**
+     * subjectId valorizzato → solo quel personaggio.
+     * subjectId null → tutte le frasi del contesto (qualsiasi personaggio).
+     */
+    private fun matchesContextAndSubject(
+        storedContextId: String,
+        storedSubjectId: String?,
+        contextId: String,
+        subjectId: String?,
+    ): Boolean =
+        storedContextId == contextId && (subjectId == null || storedSubjectId == subjectId)
+
+    suspend fun insertSample(sample: AudioSample) {
+        sampleDao.insert(sample.toEntity())
     }
 
     private fun matches(phrase: Phrase, filters: ArchiveFilters): Boolean {

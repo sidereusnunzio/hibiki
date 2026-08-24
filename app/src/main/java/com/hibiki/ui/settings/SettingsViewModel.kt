@@ -7,14 +7,8 @@ import android.provider.DocumentsContract
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hibiki.container
-import com.hibiki.data.arashi.ArashiExportContract
-import com.hibiki.data.arashi.ArashiExportException
-import com.hibiki.data.arashi.ArashiExportIntents
-import com.hibiki.data.arashi.ArashiExportOutcome
-import com.hibiki.data.arashi.ArashiExportPackage
-import com.hibiki.data.arashi.ArashiExportResultInterpreter
-import com.hibiki.data.arashi.model.ArashiExportType
-import com.hibiki.data.arashi.model.ArashiImportResultDto
+import com.hibiki.data.arashi.ArashiActivityResult
+import com.hibiki.data.arashi.ArashiSyncOutcome
 import com.hibiki.data.api.openai.OpenAiCostsClient
 import com.hibiki.data.api.openai.OpenAiCostsReport
 import com.hibiki.data.backup.BackupExportState
@@ -27,13 +21,10 @@ import com.hibiki.domain.model.AudioSettings
 import com.hibiki.domain.model.LastArashiExport
 import com.hibiki.domain.model.OverlayDisplayPrefs
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -102,12 +93,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     private var persistJob: Job? = null
     private var pendingExportFile: File? = null
-    private var pendingArashiPackage: ArashiExportPackage? = null
-    private val _arashiLaunch = MutableSharedFlow<android.content.Intent>(
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    val arashiLaunch: SharedFlow<android.content.Intent> = _arashiLaunch.asSharedFlow()
+    private val _arashiLaunch = container.arashiSyncSession.launch
+    val arashiLaunch: SharedFlow<android.content.Intent> = _arashiLaunch
 
     init {
         viewModelScope.launch {
@@ -414,71 +401,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(backupState = BackupState.Idle) }
     }
 
-    fun startArashiExport(context: Context, requestedType: ArashiExportType) {
+    fun startArashiExport(context: Context) {
         viewModelScope.launch {
-            clearPendingArashiPackage(context)
+            container.arashiSyncSession.clearPending(context)
             _uiState.update { it.copy(arashiExportState = ArashiExportState.Preparing) }
-            val outputDir = File(context.cacheDir, "arashi_export")
-            outputDir.mkdirs()
-            val outputFile = File(outputDir, "hibiki-arashi-export.zip")
-            try {
-                if (!ArashiExportIntents.isArashiImportAvailable(context)) {
-                    _uiState.update {
-                        it.copy(
-                            arashiExportState = ArashiExportState.Error(
-                                "Arashi non è installata o l'import non è disponibile",
-                            ),
-                        )
-                    }
-                    return@launch
-                }
-                val lastAt = _uiState.value.lastArashiExport?.exportedAtEpochMs
-                val created = container.arashiExportService.createPackage(
-                    outputFile = outputFile,
-                    requestedType = requestedType,
-                    lastSuccessfulExportAtMs = lastAt,
-                )
-                val uri = ArashiExportIntents.fileProviderUri(context, created.file)
-                context.grantUriPermission(
-                    ArashiExportContract.ARASHI_PACKAGE,
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-                pendingArashiPackage = created
-                val launched = _arashiLaunch.tryEmit(ArashiExportIntents.importIntent(uri, created.exportId))
-                if (!launched) {
-                    clearPendingArashiPackage(context)
-                    _uiState.update {
-                        it.copy(arashiExportState = ArashiExportState.Error("Impossibile aprire Arashi"))
-                    }
-                }
-            } catch (error: ArashiExportException) {
-                outputFile.delete()
-                _uiState.update {
-                    it.copy(arashiExportState = ArashiExportState.Error(error.message ?: "Export fallito"))
-                }
-            } catch (error: Exception) {
-                outputFile.delete()
-                _uiState.update {
-                    it.copy(
-                        arashiExportState = ArashiExportState.Error(
-                            error.message ?: "Export verso Arashi fallito",
-                        ),
-                    )
-                }
+            when (val immediate = container.arashiSyncSession.startPendingExport(context)) {
+                null -> Unit
+                else -> applyArashiOutcome(immediate)
             }
         }
     }
 
     fun onArashiLaunchFailed(context: Context, error: Throwable) {
-        clearPendingArashiPackage(context)
-        _uiState.update {
-            it.copy(
-                arashiExportState = ArashiExportState.Error(
-                    error.message ?: "Arashi non è installata o l'import non è disponibile",
-                ),
-            )
-        }
+        applyArashiOutcome(container.arashiSyncSession.onLaunchFailed(context, error))
     }
 
     fun onArashiActivityResult(
@@ -487,37 +422,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         resultJson: String?,
         errorMessage: String?,
     ) {
-        val pending = pendingArashiPackage
-        val expectedId = pending?.exportId.orEmpty()
-        val outcome = ArashiExportResultInterpreter.interpret(
-            resultCode = resultCode,
-            resultJson = resultJson,
-            errorMessage = errorMessage,
-            expectedExportId = expectedId,
-        )
-        clearPendingArashiPackage(context)
-        when (outcome) {
-            ArashiExportOutcome.Cancelled -> {
-                _uiState.update { it.copy(arashiExportState = ArashiExportState.Idle) }
-            }
-            is ArashiExportOutcome.Invalid -> {
-                _uiState.update { it.copy(arashiExportState = ArashiExportState.Error(outcome.message)) }
-            }
-            is ArashiExportOutcome.Success -> {
+        when (
+            val result = container.arashiSyncSession.onActivityResult(
+                context = context,
+                resultCode = resultCode,
+                resultJson = resultJson,
+                errorMessage = errorMessage,
+            )
+        ) {
+            is ArashiActivityResult.Done -> applyArashiOutcome(result.outcome)
+            is ArashiActivityResult.SuccessPending -> {
                 viewModelScope.launch {
-                    if (pending != null) {
-                        container.settingsRepository.setLastArashiExport(
-                            LastArashiExport(
-                                exportedAtEpochMs = pending.exportedAtEpochMs,
-                                exportId = pending.exportId,
-                                phraseCount = pending.phraseCount,
-                                exportType = pending.exportType,
-                            ),
-                        )
-                    }
-                    _uiState.update {
-                        it.copy(arashiExportState = ArashiExportState.Success(formatArashiSummary(outcome.result)))
-                    }
+                    val outcome = container.arashiSyncSession.finalizeSuccess(result.pending, result.result)
+                    applyArashiOutcome(outcome)
                 }
             }
         }
@@ -527,28 +444,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(arashiExportState = ArashiExportState.Idle) }
     }
 
-    private fun clearPendingArashiPackage(context: Context) {
-        pendingArashiPackage?.let { pending ->
-            runCatching {
-                val uri = ArashiExportIntents.fileProviderUri(context, pending.file)
-                context.revokeUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    private fun applyArashiOutcome(outcome: ArashiSyncOutcome) {
+        when (outcome) {
+            ArashiSyncOutcome.Cancelled -> {
+                _uiState.update { it.copy(arashiExportState = ArashiExportState.Idle) }
             }
-            pending.file.delete()
-        }
-        pendingArashiPackage = null
-    }
-
-    private fun formatArashiSummary(result: ArashiImportResultDto): String {
-        return buildString {
-            append("Export verso Arashi completato")
-            append('\n')
-            append("${result.imported} nuove frasi importate")
-            append('\n')
-            append("${result.updated} frasi aggiornate")
-            append('\n')
-            append("${result.duplicates} già presenti")
-            append('\n')
-            append("${result.failed} ${if (result.failed == 1) "errore" else "errori"}")
+            is ArashiSyncOutcome.Error -> {
+                _uiState.update { it.copy(arashiExportState = ArashiExportState.Error(outcome.message)) }
+            }
+            is ArashiSyncOutcome.Success -> {
+                _uiState.update {
+                    it.copy(arashiExportState = ArashiExportState.Success(outcome.summary))
+                }
+            }
         }
     }
 
@@ -597,7 +505,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         pendingExportFile?.delete()
-        pendingArashiPackage?.file?.delete()
         super.onCleared()
     }
 

@@ -20,8 +20,47 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.hibiki.ui.theme.Cyberpunk
 import com.hibiki.ui.theme.cyberpunkOutlinedTextFieldColors
+
+private object HibikiSwitchColors {
+    @Composable
+    fun defaults() = SwitchDefaults.colors(
+        checkedThumbColor = Cyberpunk.Void,
+        checkedTrackColor = Cyberpunk.TextPrimary,
+        checkedBorderColor = Cyberpunk.TextPrimary,
+        uncheckedThumbColor = Cyberpunk.TextMuted,
+        uncheckedTrackColor = Cyberpunk.withAlpha(Cyberpunk.TextMuted, 0.28f),
+        uncheckedBorderColor = Cyberpunk.TextMuted,
+        disabledCheckedThumbColor = Cyberpunk.Void,
+        disabledCheckedTrackColor = Cyberpunk.withAlpha(Cyberpunk.TextPrimary, 0.35f),
+        disabledUncheckedThumbColor = Cyberpunk.withAlpha(Cyberpunk.TextMuted, 0.45f),
+        disabledUncheckedTrackColor = Cyberpunk.withAlpha(Cyberpunk.TextMuted, 0.16f),
+    )
+}
+
+@Composable
+fun HibikiSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentDescription: String? = null,
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        enabled = enabled,
+        modifier = if (contentDescription != null) {
+            modifier.semantics { this.contentDescription = contentDescription }
+        } else {
+            modifier
+        },
+        colors = HibikiSwitchColors.defaults(),
+    )
+}
 
 data class HibikiSelectOption(
     val value: String,
@@ -103,18 +142,7 @@ fun HibikiToggleRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Cyberpunk.Void,
-                checkedTrackColor = Cyberpunk.TextPrimary,
-                checkedBorderColor = Cyberpunk.TextPrimary,
-                uncheckedThumbColor = Cyberpunk.TextMuted,
-                uncheckedTrackColor = Cyberpunk.withAlpha(Cyberpunk.TextMuted, 0.28f),
-                uncheckedBorderColor = Cyberpunk.TextMuted,
-                disabledCheckedThumbColor = Cyberpunk.Void,
-                disabledCheckedTrackColor = Cyberpunk.withAlpha(Cyberpunk.TextPrimary, 0.35f),
-                disabledUncheckedThumbColor = Cyberpunk.withAlpha(Cyberpunk.TextMuted, 0.45f),
-                disabledUncheckedTrackColor = Cyberpunk.withAlpha(Cyberpunk.TextMuted, 0.16f),
-            ),
+            colors = HibikiSwitchColors.defaults(),
         )
     }
 }

@@ -1,11 +1,9 @@
 package com.hibiki.data.repository
 
-import com.hibiki.domain.model.DefaultPrompts
-import com.hibiki.domain.model.AudioMatchConfig
-import com.hibiki.domain.model.AudioSample
+import com.hibiki.domain.model.Phrase
+import com.hibiki.domain.model.PhraseSource
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AudioFingerprintRepositoryTest {
@@ -13,39 +11,61 @@ class AudioFingerprintRepositoryTest {
     private val fingerprint = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8)
 
     @Test
-    fun matchesSameClipWithCompatibleDuration() {
-        val sample = sample(durationMs = 2000)
-        val match = repository.findBestMatch(
-            fingerprint = fingerprint,
-            candidates = listOf(sample),
-            threshold = AudioMatchConfig.DEFAULT_SIMILARITY_THRESHOLD,
-            durationMs = 2100,
+    fun retrieveCandidatesReturnsTopMatchesAboveThreshold() {
+        val strong = target("strong", fingerprint)
+        val weak = target("weak", ByteArray(8) { 0xFF.toByte() })
+        val candidates = repository.retrieveCandidates(
+            queryFingerprints = listOf(fingerprint),
+            targets = listOf(strong, weak),
+            threshold = 0.90f,
         )
-        assertNotNull(match)
-        assertEquals(sample.id, match?.sample?.id)
+        assertEquals(1, candidates.size)
+        assertEquals("strong", candidates.first().target.phrase.id)
+        assertTrue(candidates.first().fingerprintScore >= 0.90f)
     }
 
     @Test
-    fun rejectsCompatibleFingerprintWhenDurationDiffersTooMuch() {
-        val sample = sample(durationMs = 4000)
-        val match = repository.findBestMatch(
-            fingerprint = fingerprint,
-            candidates = listOf(sample),
-            threshold = AudioMatchConfig.DEFAULT_SIMILARITY_THRESHOLD,
-            durationMs = 1000,
+    fun retrieveCandidatesRespectsTopN() {
+        val targets = (1..8).map { index ->
+            target("p$index", fingerprint.copyOf().also { it[0] = index.toByte() })
+        }
+        val candidates = repository.retrieveCandidates(
+            queryFingerprints = listOf(fingerprint),
+            targets = targets,
+            topN = 3,
         )
-        assertNull(match)
+        assertEquals(3, candidates.size)
     }
 
-    private fun sample(durationMs: Long) = AudioSample(
-        id = "sample-1",
+    private fun target(id: String, fp: ByteArray) = PhraseMatchTarget(
+        phrase = Phrase(
+            id = id,
+            audioSampleId = "sample-$id",
+            contextId = "ctx",
+            subjectId = null,
+            audioPath = null,
+            audioFingerprint = fp,
+            durationMs = 2000,
+            japaneseRaw = "やるじゃねえか！",
+            japaneseCorrected = null,
+            kana = "やるじゃねえか",
+            romaji = "yaru ja nee ka",
+            literalTranslation = "fare, eh?",
+            naturalTranslation = "Not bad!",
+            confidence = null,
+            verified = false,
+            source = PhraseSource.API,
+            createdAt = 0L,
+            updatedAt = 0L,
+            transcriptionModel = "gpt-transcribe",
+            analysisModel = "gpt-4o-mini",
+            transcriptionPromptVersion = 4,
+            analysisPromptVersion = 1,
+        ),
+        prototypeId = "$id:p0",
+        fingerprint = fp,
+        durationMs = 2000,
+        pcmPreview = null,
         audioPath = null,
-        audioFingerprint = fingerprint,
-        durationMs = durationMs,
-        japaneseRaw = "やるじゃねえか！",
-        confidence = null,
-        transcriptionModel = "gpt-transcribe",
-        transcriptionPromptVersion = DefaultPrompts.TRANSCRIPTION_PROMPT_VERSION,
-        createdAt = 0L,
     )
 }

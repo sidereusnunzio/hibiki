@@ -24,7 +24,7 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreTime
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,8 +44,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.hibiki.domain.model.CaptureResult
-import com.hibiki.domain.model.OverlayDisplayPrefs
 import com.hibiki.domain.model.OverlayStage
 import com.hibiki.domain.model.OverlayUiState
 import com.hibiki.domain.model.PhraseSource
@@ -54,7 +52,6 @@ import com.hibiki.domain.model.Subject
 import com.hibiki.ui.components.HibikiButton
 import com.hibiki.ui.components.HibikiButtonColors
 import com.hibiki.ui.components.HibikiButtonStyles
-import com.hibiki.ui.components.HibikiConfirmDialog
 import com.hibiki.ui.components.SectionLabel
 import com.hibiki.ui.theme.Cyberpunk
 
@@ -84,16 +81,16 @@ private val OverlayRecordActive = HibikiButtonColors(
 @Composable
 fun OverlayPanel(
     state: OverlayUiState,
-    displayPrefs: OverlayDisplayPrefs,
     onDrag: (dx: Int, dy: Int) -> Unit,
     onToggleCollapsed: () -> Unit,
     onSelectContext: (StudyContext) -> Unit,
-    onSelectSubject: (Subject) -> Unit,
+    onSelectSubject: (Subject?) -> Unit,
     onListenToggle: () -> Unit,
     onBufferToggle: () -> Unit,
-    onPlay: () -> Unit,
+    onOpenPhrasePanel: () -> Unit,
     onCloseOverlay: () -> Unit,
     onCloseApp: () -> Unit,
+    onCloseConfirmVisible: (Boolean) -> Unit,
     onDropdownFocus: (Boolean) -> Unit,
 ) {
     val shape = RoundedCornerShape(4.dp)
@@ -105,6 +102,7 @@ fun OverlayPanel(
     }
     fun setCloseConfirm(visible: Boolean) {
         showCloseConfirm = visible
+        onCloseConfirmVisible(visible)
         onDropdownFocus(visible || openMenu != null)
     }
     val hasSubjects = state.selectedContext?.hasSubjects == true
@@ -113,118 +111,163 @@ fun OverlayPanel(
             setMenu(null)
         }
     }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                if (state.collapsed) Cyberpunk.withAlpha(Cyberpunk.Panel, 0.38f)
-                else Cyberpunk.PanelTranslucent,
-                shape,
-            )
-            .border(1.dp, Cyberpunk.GridLine, shape)
-            .padding(if (state.collapsed) 4.dp else 10.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.DragHandle,
-                contentDescription = "Sposta",
-                tint = Cyberpunk.MutedCyan,
-                modifier = Modifier
-                    .size(if (state.collapsed) 20.dp else 24.dp)
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            onDrag(dragAmount.x.toInt(), dragAmount.y.toInt())
-                        }
-                    },
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            IconButton(
-                onClick = onToggleCollapsed,
-                modifier = if (state.collapsed) Modifier.size(32.dp) else Modifier,
-            ) {
-                Icon(
-                    imageVector = if (state.collapsed) Icons.Filled.Add else Icons.Filled.Remove,
-                    contentDescription = if (state.collapsed) "Mostra configurazione" else "Nascondi configurazione",
-                    tint = Cyberpunk.TextMuted,
-                    modifier = Modifier.size(if (state.collapsed) 16.dp else 24.dp),
-                )
-            }
-            IconButton(
-                onClick = {
-                    setMenu(null)
-                    setCloseConfirm(true)
-                },
-                modifier = if (state.collapsed) Modifier.size(32.dp) else Modifier,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = "Spegni overlay",
-                    tint = Cyberpunk.NeonMagenta,
-                    modifier = Modifier.size(if (state.collapsed) 16.dp else 24.dp),
-                )
-            }
-        }
-        if (!state.collapsed) {
-            OverlaySelect(
-                label = "Contesto",
-                selectedLabel = state.selectedContext?.name ?: "Seleziona contesto",
-                options = state.contexts.map { it.name to it },
-                expanded = openMenu == OverlayMenu.Context,
-                onToggle = { setMenu(if (openMenu == OverlayMenu.Context) null else OverlayMenu.Context) },
-                onSelect = {
-                    onSelectContext(it)
-                    setMenu(null)
-                },
-            )
-            if (hasSubjects) {
-                Spacer(modifier = Modifier.height(8.dp))
-                OverlaySelect(
-                    label = "Personaggio",
-                    selectedLabel = state.selectedSubject?.let { subjectLabel(it) } ?: "Seleziona personaggio",
-                    options = state.subjects.map { subjectLabel(it) to it },
-                    expanded = openMenu == OverlayMenu.Subject,
-                    onToggle = { setMenu(if (openMenu == OverlayMenu.Subject) null else OverlayMenu.Subject) },
-                    onSelect = {
-                        onSelectSubject(it)
-                        setMenu(null)
-                    },
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-        OverlayBody(
-            state = state,
-            displayPrefs = displayPrefs,
-            onListenToggle = onListenToggle,
-            onBufferToggle = onBufferToggle,
-            onPlay = onPlay,
-        )
-    }
     if (showCloseConfirm) {
-        val listening = state.stage == OverlayStage.LISTENING
-        HibikiConfirmDialog(
-            title = "Chiudere l'overlay?",
-            message = buildString {
-                append("Scegli se tornare alla home dell'app o chiudere del tutto.")
-                if (listening) append(" L'ascolto in corso verrà interrotto.")
-            },
-            alternateConfirmLabel = "CHIUDI OVERLAY",
-            alternateConfirmStyle = HibikiButtonStyles.Violet,
-            onAlternateConfirm = {
+        OverlayCloseConfirm(
+            listening = state.stage == OverlayStage.LISTENING,
+            onDismiss = { setCloseConfirm(false) },
+            onCloseOverlay = {
                 setCloseConfirm(false)
                 onCloseOverlay()
             },
-            confirmLabel = "CHIUDI APP",
-            confirmStyle = HibikiButtonStyles.Destructive,
-            onConfirm = {
+            onCloseApp = {
                 setCloseConfirm(false)
                 onCloseApp()
             },
-            onDismiss = { setCloseConfirm(false) },
+        )
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    if (state.collapsed) Cyberpunk.withAlpha(Cyberpunk.Panel, 0.38f)
+                    else Cyberpunk.PanelTranslucent,
+                    shape,
+                )
+                .border(1.dp, Cyberpunk.GridLine, shape)
+                .padding(if (state.collapsed) 4.dp else 10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.DragHandle,
+                    contentDescription = "Sposta",
+                    tint = Cyberpunk.MutedCyan,
+                    modifier = Modifier
+                        .size(if (state.collapsed) 20.dp else 24.dp)
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                onDrag(dragAmount.x.toInt(), dragAmount.y.toInt())
+                            }
+                        },
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                IconButton(
+                    onClick = onToggleCollapsed,
+                    modifier = if (state.collapsed) Modifier.size(32.dp) else Modifier,
+                ) {
+                    Icon(
+                        imageVector = if (state.collapsed) Icons.Filled.Add else Icons.Filled.Remove,
+                        contentDescription = if (state.collapsed) "Mostra configurazione" else "Nascondi configurazione",
+                        tint = Cyberpunk.TextMuted,
+                        modifier = Modifier.size(if (state.collapsed) 16.dp else 24.dp),
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        setMenu(null)
+                        setCloseConfirm(true)
+                    },
+                    modifier = if (state.collapsed) Modifier.size(32.dp) else Modifier,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Spegni overlay",
+                        tint = Cyberpunk.NeonMagenta,
+                        modifier = Modifier.size(if (state.collapsed) 16.dp else 24.dp),
+                    )
+                }
+            }
+            if (!state.collapsed) {
+                OverlaySelect(
+                    label = "Contesto",
+                    selectedLabel = state.selectedContext?.name ?: "Seleziona contesto",
+                    options = state.contexts.map { it.name to it },
+                    expanded = openMenu == OverlayMenu.Context,
+                    onToggle = { setMenu(if (openMenu == OverlayMenu.Context) null else OverlayMenu.Context) },
+                    onSelect = {
+                        onSelectContext(it)
+                        setMenu(null)
+                    },
+                )
+                if (hasSubjects) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OverlaySelect(
+                        label = "Personaggio",
+                        selectedLabel = state.selectedSubject?.let { subjectLabel(it) } ?: "Qualsiasi",
+                        options = listOf("Qualsiasi" to null) +
+                            state.subjects.map { subjectLabel(it) to it },
+                        expanded = openMenu == OverlayMenu.Subject,
+                        onToggle = { setMenu(if (openMenu == OverlayMenu.Subject) null else OverlayMenu.Subject) },
+                        onSelect = {
+                            onSelectSubject(it)
+                            setMenu(null)
+                        },
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            OverlayBody(
+                state = state,
+                onListenToggle = onListenToggle,
+                onBufferToggle = onBufferToggle,
+                onOpenPhrasePanel = onOpenPhrasePanel,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayCloseConfirm(
+    listening: Boolean,
+    onDismiss: () -> Unit,
+    onCloseOverlay: () -> Unit,
+    onCloseApp: () -> Unit,
+) {
+    val shape = RoundedCornerShape(4.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Cyberpunk.withAlpha(Cyberpunk.Void, 0.94f), shape)
+            .border(1.dp, Cyberpunk.NeonMagenta, shape)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "Chiudere l'overlay?",
+            color = Cyberpunk.TextPrimary,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = buildString {
+                append("Scegli se tornare alla home dell'app o chiudere del tutto.")
+                if (listening) append(" L'ascolto in corso verrà interrotto.")
+            },
+            color = Cyberpunk.TextMuted,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        HibikiButton(
+            modifier = Modifier.fillMaxWidth(),
+            text = "CHIUDI OVERLAY",
+            onClick = onCloseOverlay,
+            style = HibikiButtonStyles.Violet,
+            fillMaxWidth = false,
+        )
+        HibikiButton(
+            modifier = Modifier.fillMaxWidth(),
+            text = "CHIUDI APP",
+            onClick = onCloseApp,
+            style = HibikiButtonStyles.Destructive,
+            fillMaxWidth = false,
+        )
+        HibikiButton(
+            modifier = Modifier.fillMaxWidth(),
+            text = "ANNULLA",
+            onClick = onDismiss,
+            style = HibikiButtonStyles.Cancel,
+            fillMaxWidth = false,
         )
     }
 }
@@ -232,24 +275,34 @@ fun OverlayPanel(
 @Composable
 private fun OverlayBody(
     state: OverlayUiState,
-    displayPrefs: OverlayDisplayPrefs,
     onListenToggle: () -> Unit,
     onBufferToggle: () -> Unit,
-    onPlay: () -> Unit,
+    onOpenPhrasePanel: () -> Unit,
 ) {
     val busy = state.stage != OverlayStage.IDLE &&
         state.stage != OverlayStage.RESULT &&
         state.stage != OverlayStage.ERROR &&
         state.stage != OverlayStage.LISTENING
-    val localMatch = state.result?.origin == PhraseSource.LOCAL_MATCH &&
+    val localMatch = isArchiveMatchOrigin(state.result?.origin) &&
         state.stage == OverlayStage.RESULT
     OverlayStatus(
         state = state,
         collapsed = state.collapsed,
         localMatch = localMatch,
-        displayPrefs = displayPrefs,
-        onPlay = onPlay,
     )
+    if (!state.collapsed && state.result != null && !state.phrasePanelVisible && state.stage == OverlayStage.RESULT) {
+        HibikiButton(
+            text = "FRASE",
+            icon = Icons.AutoMirrored.Filled.OpenInNew,
+            contentDescription = "Mostra frase",
+            onClick = onOpenPhrasePanel,
+            style = if (localMatch) HibikiButtonStyles.Primary else HibikiButtonStyles.Violet,
+            fillMaxWidth = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+        )
+    }
     val listening = state.stage == OverlayStage.LISTENING
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -341,30 +394,32 @@ private fun OverlayStatus(
     state: OverlayUiState,
     collapsed: Boolean,
     localMatch: Boolean,
-    displayPrefs: OverlayDisplayPrefs,
-    onPlay: () -> Unit,
 ) {
-    val statusColor = when {
-        localMatch -> Cyberpunk.NeonLime
-        state.stage == OverlayStage.LISTENING -> Cyberpunk.NeonMagenta
-        state.stage == OverlayStage.ERROR -> Cyberpunk.NeonMagenta
-        state.stage == OverlayStage.RESULT -> Cyberpunk.NeonCyan
-        state.stage == OverlayStage.IDLE && state.bufferEnabled -> Cyberpunk.NeonLime
-        state.stage == OverlayStage.IDLE -> Cyberpunk.TextMuted
-        else -> Cyberpunk.NeonViolet
-    }
+    val apiHighlight = state.stage == OverlayStage.TRANSCRIBING || state.stage == OverlayStage.ANALYZING
+    val statusColor = stageStatusColor(state, localMatch, apiHighlight)
     val statusText = when {
         collapsed -> collapsedStatusText(state)
         state.stage == OverlayStage.ERROR && !state.errorMessage.isNullOrBlank() -> null
         else -> stageLabel(state)
     }
     if (statusText != null) {
+        val shape = RoundedCornerShape(2.dp)
         Text(
             text = statusText,
             color = statusColor,
             style = if (collapsed) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (apiHighlight) {
+                        Modifier
+                            .background(Cyberpunk.NeonViolet, shape)
+                            .padding(horizontal = 10.dp, vertical = if (collapsed) 3.dp else 5.dp)
+                    } else {
+                        Modifier
+                    },
+                ),
         )
     }
     if (state.stage == OverlayStage.ERROR && state.errorMessage != null) {
@@ -377,52 +432,22 @@ private fun OverlayStatus(
             maxLines = if (collapsed) 2 else Int.MAX_VALUE,
         )
     }
-    if (!collapsed) {
-        state.result?.let { OverlayResult(it, displayPrefs, onPlay) }
-        Spacer(modifier = Modifier.height(8.dp))
-    } else if (statusText != null || state.stage == OverlayStage.ERROR) {
-        Spacer(modifier = Modifier.height(4.dp))
+    if (statusText != null || state.stage == OverlayStage.ERROR) {
+        Spacer(modifier = Modifier.height(if (collapsed) 4.dp else 8.dp))
     }
 }
 
-@Composable
-private fun OverlayResult(
-    result: CaptureResult,
-    displayPrefs: OverlayDisplayPrefs,
-    onPlay: () -> Unit,
-) {
-    Spacer(modifier = Modifier.height(8.dp))
-    if (result.origin == PhraseSource.LOCAL_MATCH) {
-        val percent = ((result.similarity ?: 0f) * 100).toInt()
-        SectionLabel("Origine")
-        Text(
-            text = "MATCH LOCALE  $percent%",
-            color = Cyberpunk.NeonLime,
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-    }
-    val phrase = result.phrase
-    if (displayPrefs.showJapanese) OverlayField("日本語", phrase.japaneseDisplay)
-    if (displayPrefs.showKana) OverlayField("かな", phrase.kana)
-    if (displayPrefs.showRomaji) OverlayField("Rōmaji", phrase.romaji)
-    if (displayPrefs.showLiteral) OverlayField("Traduzione letterale", phrase.literalTranslation)
-    if (displayPrefs.showNatural) OverlayField("Traduzione", phrase.naturalTranslation)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (phrase.audioPath != null) {
-            IconButton(onClick = onPlay) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = "Play", tint = Cyberpunk.NeonCyan)
-            }
-        }
-        Text("dettagli nell'archivio", color = Cyberpunk.TextMuted, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@Composable
-private fun OverlayField(label: String, value: String) {
-    SectionLabel(label)
-    Text(value, color = Cyberpunk.TextPrimary, style = MaterialTheme.typography.bodyLarge)
-    Spacer(modifier = Modifier.height(6.dp))
+private fun stageStatusColor(state: OverlayUiState, localMatch: Boolean, apiHighlight: Boolean) = when {
+    apiHighlight -> Cyberpunk.TextPrimary
+    state.stage == OverlayStage.LISTENING -> Cyberpunk.NeonMagenta
+    state.stage == OverlayStage.ERROR -> Cyberpunk.NeonMagenta
+    state.stage == OverlayStage.RESULT && localMatch -> Cyberpunk.NeonCyan
+    state.stage == OverlayStage.RESULT -> Cyberpunk.NeonViolet
+    state.stage == OverlayStage.PROCESSING_AUDIO ||
+        state.stage == OverlayStage.SEARCHING_LOCAL_ARCHIVE -> Cyberpunk.TextPrimary
+    state.stage == OverlayStage.IDLE && state.bufferEnabled -> Cyberpunk.NeonLime
+    state.stage == OverlayStage.IDLE -> Cyberpunk.TextMuted
+    else -> Cyberpunk.TextPrimary
 }
 
 @Composable
@@ -501,9 +526,12 @@ private fun subjectLabel(subject: Subject): String {
     return if (japanese.isBlank()) subject.displayName else "${subject.displayName} (${japanese})"
 }
 
+private fun isArchiveMatchOrigin(origin: PhraseSource?): Boolean =
+    origin == PhraseSource.LOCAL_MATCH || origin == PhraseSource.TEXT_MATCH_AFTER_TRANSCRIPTION
+
 private fun collapsedStatusText(state: OverlayUiState): String? = when (state.stage) {
     OverlayStage.IDLE -> null
-    OverlayStage.LISTENING -> state.remainingSeconds?.let { "${it}s" } ?: "REC"
+    OverlayStage.LISTENING -> state.remainingSeconds?.let { "REC ${it}s" } ?: "REC"
     OverlayStage.ERROR -> null
     OverlayStage.RESULT -> null
     else -> stageLabel(state)
@@ -512,14 +540,14 @@ private fun collapsedStatusText(state: OverlayUiState): String? = when (state.st
 private fun stageLabel(state: OverlayUiState): String = when (state.stage) {
     OverlayStage.IDLE -> if (state.bufferEnabled) "BUFFER" else "IDLE"
     OverlayStage.LISTENING -> "LISTENING" + (state.remainingSeconds?.let { "  ${it}s" } ?: "")
-    OverlayStage.PROCESSING_AUDIO -> "PROCESSING AUDIO"
-    OverlayStage.SEARCHING_LOCAL_ARCHIVE -> "SEARCHING LOCAL ARCHIVE"
-    OverlayStage.TRANSCRIBING -> "TRANSCRIBING"
-    OverlayStage.ANALYZING -> "ANALYZING"
+    OverlayStage.PROCESSING_AUDIO -> "AUDIO"
+    OverlayStage.SEARCHING_LOCAL_ARCHIVE -> "ARCHIVIO"
+    OverlayStage.TRANSCRIBING -> "API"
+    OverlayStage.ANALYZING -> "ANALISI API"
     OverlayStage.RESULT -> {
-        val local = state.result?.origin == PhraseSource.LOCAL_MATCH
+        val local = isArchiveMatchOrigin(state.result?.origin)
         val percent = ((state.result?.similarity ?: 0f) * 100).toInt()
-        if (local) "MATCH LOCALE  $percent%" else "API"
+        if (local && percent > 0) "IN ARCHIVIO  $percent%" else if (local) "IN ARCHIVIO" else "COMPLETATO"
     }
     OverlayStage.ERROR -> "ERROR"
 }
