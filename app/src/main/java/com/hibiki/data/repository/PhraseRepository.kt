@@ -17,6 +17,7 @@ import com.hibiki.domain.model.LinguisticAnalysis
 import com.hibiki.domain.model.Phrase
 import java.util.UUID
 import com.hibiki.domain.model.PhraseListItem
+import kotlin.math.abs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -119,14 +120,19 @@ class PhraseRepository(
             }
     }
 
-    /** Target di matching: una entry per prototipo acustico di ogni Phrase nel contesto. */
-    suspend fun getMatchTargets(contextId: String, subjectId: String?): List<PhraseMatchTarget> {
+    /** Target di matching: prototipi del contesto/personaggio con durata vicina alla clip. */
+    suspend fun getMatchTargets(
+        contextId: String,
+        subjectId: String?,
+        clipDurationMs: Long,
+    ): List<PhraseMatchTarget> {
         val sampleById = sampleDao.getAll().associateBy { it.id }
         val phrases = phraseDao.getAll()
             .filter { row -> matchesContextAndSubject(row.contextId, row.subjectId, contextId, subjectId) }
             .mapNotNull { row -> sampleById[row.audioSampleId]?.let { row.toModel(it) } }
         return phrases.flatMap { phrase ->
-            prototypeDao.getByPhrase(phrase.id).map { prototype ->
+            prototypeDao.getByPhrase(phrase.id).mapNotNull { prototype ->
+                if (!matchesDuration(prototype.durationMs, clipDurationMs)) return@mapNotNull null
                 PhraseMatchTarget(
                     phrase = phrase,
                     prototypeId = prototype.id,
@@ -235,6 +241,9 @@ class PhraseRepository(
         contextId: String,
         subjectId: String?,
     ): Boolean = matchesContextAndSubject(storedContextId, storedSubjectId, contextId, subjectId)
+
+    private fun matchesDuration(storedDurationMs: Long, clipDurationMs: Long): Boolean =
+        abs(storedDurationMs - clipDurationMs) <= AudioMatchConfig.MATCH_DURATION_WINDOW_MS
 
     /**
      * subjectId valorizzato → solo quel personaggio.

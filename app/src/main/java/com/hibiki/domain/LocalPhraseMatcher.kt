@@ -29,7 +29,11 @@ class LocalPhraseMatcher(
         subjectId: String?,
     ): LocalPhraseMatchResult? {
         val newClips = listOf(recorded.trimmed, recorded.raw)
-        val targets = phraseRepository.getMatchTargets(contextId, subjectId)
+        val targets = phraseRepository.getMatchTargets(
+            contextId = contextId,
+            subjectId = subjectId,
+            clipDurationMs = recorded.trimmed.durationMs,
+        )
         if (targets.isEmpty()) return null
 
         val fingerprints = newClips
@@ -44,7 +48,7 @@ class LocalPhraseMatcher(
                 targets = targets,
             ).associate { it.target.prototypeId to it.fingerprintScore }
         }
-        // Confronta tutti i target del filtro contesto/personaggio: la durata non filtra.
+        // Pool già filtrato per contesto, personaggio e durata (±5 s).
         // Il fingerprint serve solo a ordinare i confronti (candidati più plausibili prima).
         val pool = targets
             .sortedByDescending { fingerprintScoreByPrototype[it.prototypeId] ?: -1f }

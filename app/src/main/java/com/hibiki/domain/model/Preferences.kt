@@ -48,21 +48,30 @@ enum class AudioFormat(val fileExtension: String, val mimeType: String) {
 
 /**
  * Parametri di matching audio.
- * La durata totale non è un criterio di decisione (record/stop manuale).
- * Si confronta uno spezzone intorno a metà clip cercato nei candidati.
+ * Il pool di candidati è ristretto a contesto, personaggio e durata (±5 s).
+ * La durata non entra nel punteggio: si confronta uno spezzone intorno a metà clip.
  */
 object AudioMatchConfig {
     const val DEFAULT_SIMILARITY_THRESHOLD = 0.92f
+    /** Acquisizioni più corte di questo valore sono registrazioni vuote: niente matching né API. */
+    const val MIN_CAPTURE_DURATION_MS = 1_000L
+    /** Finestra sul campione da confrontare: |durata clip − durata record| ≤ questo valore. */
+    const val MATCH_DURATION_WINDOW_MS = 5_000L
     /** Stage 1: retrieval opzionale — allarga il pool, non decide il match. */
     const val RETRIEVAL_SIMILARITY_THRESHOLD = 0.70f
     const val RETRIEVAL_TOP_CANDIDATES = 15
     /**
-     * Spezzone preso dalla nuova registrazione: centro poco dopo metà,
-     * durata tipica ~500 ms (clamp su clip cortissime).
+     * Spezzone preso dalla nuova registrazione: centro poco dopo metà della regione attiva.
+     * 1000–10000 ms → 1000 ms; oltre 10000 ms → 2000 ms.
      */
     const val PROBE_CENTER_RATIO = 0.55f
-    const val PROBE_DURATION_MS = 500L
-    const val PROBE_MIN_MS = 250L
+    const val PROBE_DURATION_SHORT_MS = 1_000L
+    const val PROBE_DURATION_LONG_MS = 2_000L
+    const val PROBE_LONG_THRESHOLD_MS = 10_000L
+
+    fun probeDurationMs(clipDurationMs: Long): Long =
+        if (clipDurationMs > PROBE_LONG_THRESHOLD_MS) PROBE_DURATION_LONG_MS else PROBE_DURATION_SHORT_MS
+
     /** Soglia relativa al picco per individuare la regione sonora (esclude silenzi di start/stop). */
     const val ACTIVE_ENERGY_RATIO = 0.15f
     /** Passo di ricerca temporale (ms): non severo sul timing. */

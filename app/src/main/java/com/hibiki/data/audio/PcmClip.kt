@@ -1,5 +1,7 @@
 package com.hibiki.data.audio
 
+import com.hibiki.domain.model.AudioMatchConfig
+
 data class PcmClip(
     val samples: ShortArray,
     val sampleRate: Int,
@@ -12,5 +14,5 @@ data class PcmClip(
             samples.size * 1000L / (sampleRate * channelCount)
         }
 
-    val isEmpty: Boolean get() = samples.isEmpty() || durationMs < 80L
+    val isEmpty: Boolean get() = samples.isEmpty() || durationMs < AudioMatchConfig.MIN_CAPTURE_DURATION_MS
 }

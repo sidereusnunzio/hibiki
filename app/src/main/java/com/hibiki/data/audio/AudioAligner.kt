@@ -35,14 +35,15 @@ object AudioAligner {
 
     /**
      * Spezzone centrato sulla regione ad energia (non sulla durata grezza record/stop),
-     * leggermente dopo metà di quella regione.
+     * leggermente dopo metà di quella regione. Durata: 1000 ms fino a 10 s di clip, 2000 ms oltre.
      */
     fun extractMidProbe(samples: ShortArray, sampleRate: Int): ShortArray? {
         if (samples.isEmpty() || sampleRate <= 0) return null
-        val minProbe = (sampleRate * AudioMatchConfig.PROBE_MIN_MS / 1000L).toInt().coerceAtLeast(1)
-        val targetProbe = (sampleRate * AudioMatchConfig.PROBE_DURATION_MS / 1000L).toInt().coerceAtLeast(minProbe)
-        if (samples.size < minProbe) return samples.copyOf()
-        val probeLen = targetProbe.coerceAtMost(samples.size)
+        val clipDurationMs = samples.size * 1000L / sampleRate
+        val targetMs = AudioMatchConfig.probeDurationMs(clipDurationMs)
+        val targetProbe = (sampleRate * targetMs / 1000L).toInt().coerceAtLeast(1)
+        if (samples.size < targetProbe) return samples.copyOf()
+        val probeLen = targetProbe
         val center = activeRegionCenter(samples, sampleRate)
         val start = (center - probeLen / 2).coerceIn(0, samples.size - probeLen)
         return samples.copyOfRange(start, start + probeLen)

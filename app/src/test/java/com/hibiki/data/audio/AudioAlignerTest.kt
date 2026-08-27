@@ -1,5 +1,6 @@
 package com.hibiki.data.audio
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -59,6 +60,23 @@ class AudioAlignerTest {
         val probe = AudioAligner.extractMidProbe(samples, sampleRate = 16_000)
         assertNotNull(probe)
         assertTrue(probe!!.any { abs(it.toInt()) > 1000 })
+        assertEquals(16_000, probe.size)
+    }
+
+    @Test
+    fun probeIs1000MsForClipsUpTo10s() {
+        val samples = ShortArray(16_000 * 10) { 8_000 }
+        val probe = AudioAligner.extractMidProbe(samples, sampleRate = 16_000)
+        assertNotNull(probe)
+        assertEquals(16_000, probe!!.size)
+    }
+
+    @Test
+    fun probeIs2000MsForClipsLongerThan10s() {
+        val samples = ShortArray(16_000 * 11) { 8_000 }
+        val probe = AudioAligner.extractMidProbe(samples, sampleRate = 16_000)
+        assertNotNull(probe)
+        assertEquals(32_000, probe!!.size)
     }
 
     private fun abs(value: Int): Int = if (value < 0) -value else value
